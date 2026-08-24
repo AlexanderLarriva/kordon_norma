@@ -1,0 +1,26 @@
+# Виртуальное окружение
+.venv/
+env/
+venv/
+ENV/
+
+# Кэш Python и линтеров
+__pycache__/
+*.py[cod]
+*$py.class
+.ruff_cache/
+.pytest_cache/
+
+# Базы данных SQLite (локальные данные)
+*.db
+*.sqlite3
+database.db
+kordon_norma.db
+
+# Настройки среды и ключи
+.env
+.vscode/
+.idea/
+
+# Streamlit кэш
+.streamlit/secrets.toml
