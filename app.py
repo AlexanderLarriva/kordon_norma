@@ -49,8 +49,8 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Инфраструктура и посты")
 
 # Кабины ПД
-pd_pedestrian = st.sidebar.number_input("Кабины ПД (пешеходка)", min_value=0, value=2)
-pd_auto = st.sidebar.number_input("Кабины/АРМ ПД (авто)", min_value=0, value=4)
+pd_pedestrian = st.sidebar.number_input("Кабины паспортного контроля", min_value=0, value=2)
+pd_auto = st.sidebar.number_input("Кабины паспортного контроля на автомобильных направлениях", min_value=0, value=4)
 pd_extra = st.sidebar.checkbox("Доп. пост ПД на территории", value=False)
 spec_rooms = st.sidebar.number_input("Комнаты спецпроверки", min_value=0, value=1)
 
@@ -242,8 +242,10 @@ with tab4:
             st.success("Режим редактирования активен.")
 
             # Смена пароля
-            with st.expander("🔑 Сменить пароль администратора"):
-                with st.form("change_pass_form"):
+            with (
+                    st.expander("🔑 Сменить пароль администратора"),
+                    st.form("change_pass_form"),
+                ):
                     new_pass = st.text_input("Новый пароль", type="password")
                     confirm_pass = st.text_input("Подтвердите новый пароль", type="password")
                     submit_pass = st.form_submit_button("Сохранить новый пароль")

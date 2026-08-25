@@ -58,7 +58,7 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list:
         data.get("lanes_auto_in", 0) + data.get("lanes_auto_out", 0) +
         data.get("lanes_truck_in", 0) + data.get("lanes_truck_out", 0)
     )
-    total_staff = personnel_res.get("total_full_staff", 0)
+    # total_staff = personnel_res.get("total_full_staff", 0)
 
     result = []
     for row in classes:
