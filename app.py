@@ -2,293 +2,440 @@ import pandas as pd
 import streamlit as st
 
 from services.calc import calculate_personnel, calculate_tspk
-from services.db import (
-    get_admin_password,
-    get_calculation_history,
-    get_connection,
-    get_tspk_classes,
-    init_db,
-    save_calculation,
-    set_admin_password,
-)
+from services.db import init_db, save_calculation
 
-# Инициализируем БД при старте (создаст таблицы и дефолтный пароль 'admin123', если их нет)
+# Инициализация БД
 init_db()
 
 st.set_page_config(
-    page_title="Расчет штата и ТСПК АПП",
+    page_title="Смена-Т | ГПС КР",
     page_icon="🦅",
-    layout="wide"
+    layout="wide",
 )
 
-st.title("🦅 Расчет штатной численности и потребности в ТСПК")
-
-# ---------------------------------------------------------
-# Боковая панель: Ввод исходных данных
-# ---------------------------------------------------------
-st.sidebar.header("Параметры АПП")
-
-app_name = st.sidebar.text_input("Наименование АПП", value="АПП 'Мамыр'")
-app_code = st.sidebar.text_input("Код АПП", value="100100")
-is_high_category = st.sidebar.checkbox("Высокая категория АПП", value=False)
-has_tspk_complex = st.sidebar.checkbox("Комплекс ТСПК/АСПК", value=True)
-has_idk = st.sidebar.checkbox("Наличие ИДК", value=True)
-has_rpm = st.sidebar.checkbox("Система РПМ (въезд/выезд)", value=True)
-has_k9 = st.sidebar.checkbox("Кинологическая служба", value=False)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Режим работы и коэффициенты")
-shift_type = st.sidebar.selectbox(
-    "График сменности",
-    options=["12h", "8h", "24h"],
-    format_func=lambda x: "12-часовой (4 смены)" if x == "12h" else ("8-часовой (3 смены)" if x == "8h" else "24-часовой (4 смены)")
-)
-k_substitute = st.sidebar.number_input("Коэффициент подмены", value=1.15, step=0.01)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("Инфраструктура и посты")
-
-# Кабины ПД
-pd_pedestrian = st.sidebar.number_input("Кабины паспортного контроля", min_value=0, value=2)
-pd_auto = st.sidebar.number_input("Кабины паспортного контроля на автомобильных направлениях", min_value=0, value=4)
-pd_extra = st.sidebar.checkbox("Доп. пост ПД на территории", value=False)
-spec_rooms = st.sidebar.number_input("Комнаты спецпроверки", min_value=0, value=1)
-
-# Шлагбаумы и полосы
-barriers_in = st.sidebar.number_input("Посты шлагбаумов (въезд)", min_value=0, value=1)
-barriers_out = st.sidebar.number_input("Посты шлагбаумов (выезд)", min_value=0, value=1)
-
-lanes_auto_in = st.sidebar.number_input("Полосы легковых (въезд)", min_value=0, value=2)
-lanes_auto_out = st.sidebar.number_input("Полосы легковых (выезд)", min_value=0, value=2)
-lanes_truck_in = st.sidebar.number_input("Полосы грузовых (въезд)", min_value=0, value=2)
-lanes_truck_out = st.sidebar.number_input("Полосы грузовых (выезд)", min_value=0, value=2)
-lanes_bus_in = st.sidebar.number_input("Полосы автобусов (въезд)", min_value=0, value=1)
-lanes_bus_out = st.sidebar.number_input("Полосы автобусов (выезд)", min_value=0, value=1)
-
-# Досмотр
-inspection_in = st.sidebar.number_input("Площадки осмотра (въезд)", min_value=0, value=1)
-inspection_out = st.sidebar.number_input("Площадки осмотра (выезд)", min_value=0, value=1)
-dts_boxes = st.sidebar.number_input("Боксы ДТС", min_value=0, value=1)
-
-# Упаковка входных данных
-input_data = {
-    "shift_type": shift_type,
-    "k_substitute": k_substitute,
-    "has_tspk_complex": has_tspk_complex,
-    "is_high_category": is_high_category,
-    "has_idk": has_idk,
-    "has_rpm": has_rpm,
-    "has_k9": has_k9,
-    "pd_cabins_pedestrian": pd_pedestrian,
-    "pd_cabins_auto": pd_auto,
-    "pd_extra_site": pd_extra,
-    "spec_rooms": spec_rooms,
-    "barriers_in": barriers_in,
-    "barriers_out": barriers_out,
-    "lanes_auto_in": lanes_auto_in,
-    "lanes_auto_out": lanes_auto_out,
-    "lanes_truck_in": lanes_truck_in,
-    "lanes_truck_out": lanes_truck_out,
-    "lanes_bus_in": lanes_bus_in,
-    "lanes_bus_out": lanes_bus_out,
-    "inspection_sites_in": inspection_in,
-    "inspection_sites_out": inspection_out,
-    "dts_boxes": dts_boxes,
+CAPACITY_PRESETS = {
+    "Низкая (до 3 000 лиц/сутки)": {
+        "cabins_in": 2, "cabins_out": 2,
+        "lanes_auto_in": 1, "lanes_auto_out": 1,
+        "lanes_truck_in": 1, "lanes_truck_out": 1,
+        "lanes_bus_in": 0, "lanes_bus_out": 0,
+    },
+    "Средняя (3 000–7 000 лиц/сутки)": {
+        "cabins_in": 4, "cabins_out": 4,
+        "lanes_auto_in": 2, "lanes_auto_out": 2,
+        "lanes_truck_in": 1, "lanes_truck_out": 1,
+        "lanes_bus_in": 1, "lanes_bus_out": 1,
+    },
+    "Высокая I (7 000–10 000 лиц/сутки)": {
+        "cabins_in": 8, "cabins_out": 8,
+        "lanes_auto_in": 2, "lanes_auto_out": 2,
+        "lanes_truck_in": 2, "lanes_truck_out": 2,
+        "lanes_bus_in": 1, "lanes_bus_out": 1,
+    },
+    "Высокая II (10 000–20 000 лиц/сутки)": {
+        "cabins_in": 12, "cabins_out": 12,
+        "lanes_auto_in": 3, "lanes_auto_out": 3,
+        "lanes_truck_in": 2, "lanes_truck_out": 2,
+        "lanes_bus_in": 1, "lanes_bus_out": 1,
+    },
+    "Высокая III (20 000–25 000 лиц/сутки)": {
+        "cabins_in": 19, "cabins_out": 19,
+        "lanes_auto_in": 3, "lanes_auto_out": 3,
+        "lanes_truck_in": 2, "lanes_truck_out": 2,
+        "lanes_bus_in": 1, "lanes_bus_out": 1,
+    },
 }
 
-# ---------------------------------------------------------
-# Выполнение расчетов
-# ---------------------------------------------------------
-res_personnel = calculate_personnel(input_data)
-res_tspk = calculate_tspk(input_data, res_personnel)
+if "step" not in st.session_state:
+    st.session_state.step = 1
 
-# Метрики сверху
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Итого штат КПП", f"{res_personnel['total_full_staff']} чел.")
-col2.metric("В том числе руководство", f"{res_personnel['total_leadership']} чел.")
-col3.metric("Оперативный штат", f"{res_personnel['total_operational']} чел.")
-col4.metric("Наряд в одну смену", f"{res_personnel['total_per_shift']} чел.")
+if "calc_data" not in st.session_state:
+    st.session_state.calc_data = {
+        "app_name": "Пункт пропуска 'Мамыр'",
+        "capacity_category": "Высокая III (20 000–25 000 лиц/сутки)",
+        "work_mode": "24/7 (Круглосуточно)",
+        "shift_hours": 12,
+        "cabins_in": 19,
+        "cabins_out": 19,
+        "lanes_auto_in": 3,
+        "lanes_auto_out": 3,
+        "lanes_truck_in": 2,
+        "lanes_truck_out": 2,
+        "lanes_bus_in": 1,
+        "lanes_bus_out": 1,
+        "has_idk": True,
+        "has_rpm": True,
+        "k9_service": "Приданные силы",
+    }
 
-st.markdown("---")
 
-tab1, tab2, tab3, tab4 = st.tabs([
-    "👥 Штатное расписание", 
-    "🛠️ Потребность в ТСПК", 
-    "📜 История расчетов",
-    "⚙️ Справочники"
-])
+def go_step(step_number: int):
+    st.session_state.step = step_number
 
-# ---------------------------------------------------------
-# TAB 1: Штатное расписание
-# ---------------------------------------------------------
-with tab1:
-    st.subheader("1. Руководящий состав")
-    df_lead = pd.DataFrame(list(res_personnel["leadership"].items()), columns=["Должность", "Количество (чел.)"])
-    st.dataframe(df_lead, use_container_width=True)
 
-    st.subheader("2. Состав дежурной смены")
-    df_shift = pd.DataFrame(list(res_personnel["shift_duty"].items()), columns=["Наряд / Должность", "Количество в смену (чел.)"])
-    st.dataframe(df_shift, use_container_width=True)
+st.title("🦅 Смена-Т — Расчет потребностей пункта пропуска (ГПС КР)")
+st.caption(f"Шаг {st.session_state.step} из 3")
+st.progress(st.session_state.step / 3)
 
-# ---------------------------------------------------------
-# TAB 2: Потребность в ТСПК
-# ---------------------------------------------------------
-# ---------------------------------------------------------
-# TAB 2: Потребность в ТСПК
-# ---------------------------------------------------------
-with tab2:
-    st.subheader("🛠️ Расчет потребности в ТСПК")
-    st.caption("Данные упорядочены по приоритету и важности (сверху вниз). Вы можете выбрать модель техники прямо в таблице.")
+# ==========================================
+# ШАГ 1: БАЗОВЫЕ ПАРАМЕТРЫ
+# ==========================================
+if st.session_state.step == 1:
+    st.header("1. Общие сведения и пропускная способность")
 
-    if res_tspk:
-        # 1. Порядок приоритета категорий (от высшего к низшему)
-        category_order = {
-            "Технические средства паспортного контроля": 1,
-            "Средства досмотра ТС и грузов": 2,
-            "Средства обнаружения оружия, ВВ и НВ": 3,
-            "Средства аудио, видео и фото документирования": 4,
-            "Средства обеспечения, технологическое оборудование": 5,
-            "Специальные технические средства обучения": 6
-        }
+    col1, col2 = st.columns(2)
 
-        # 2. Сортируем полученные результаты по важности категорий и ID класса
-        sorted_tspk = sorted(
-            res_tspk,
-            key=lambda x: (category_order.get(x["category"], 99), x["class_id"])
+    with col1:
+        app_name = st.text_input(
+            "Наименование пункта пропуска",
+            value=st.session_state.calc_data["app_name"],
         )
 
-        # 3. Формируем структуру данных для единой таблицы
-        table_data = []
-        for item in sorted_tspk:
-            models = item["available_models"]
-            selected_default = models[0] if models else "Стандартное (не указана)"
-            
-            table_data.append({
-                "Категория": item["category"],
-                "Класс ТСПК / Название": item["class_name"],
-                "Модель техники": selected_default,
-                "Основная норма": item["base_count"],
-                "НЗ (10%)": item["reserve"],
-                "Итого (потребность)": item["total_required"],
-                "Ед. изм.": item["unit"],
-                "Примечание / Расчет": item["note"]
+        capacity = st.selectbox(
+            "Пропускная способность (лиц/сутки)",
+            options=[
+                "Низкая (до 3 000 лиц/сутки)",
+                "Средняя (3 000–7 000 лиц/сутки)",
+                "Высокая I (7 000–10 000 лиц/сутки)",
+                "Высокая II (10 000–20 000 лиц/сутки)",
+                "Высокая III (20 000–25 000 лиц/сутки)",
+            ],
+            index=4,
+        )
+
+    with col2:
+        work_mode = st.selectbox(
+            "Режим работы",
+            options=["24/7 (Круглосуточно)", "12 часов (Дневной)"],
+            index=0,
+        )
+
+        shift_hours = st.radio(
+            "Продолжительность смены",
+            options=[12, 8, 24],
+            format_func=lambda x: f"{x} часов",
+            horizontal=True,
+        )
+
+    st.markdown("---")
+    if st.button("Далее: Инфраструктура ➡️", type="primary"):
+        # Получаем пресет под выбранную категорию
+        preset = CAPACITY_PRESETS.get(capacity, CAPACITY_PRESETS["Высокая III (20 000–25 000 лиц/сутки)"])
+        
+        # Обновляем данные, включая автоматические параметры для кабин и полос
+        st.session_state.calc_data.update({
+            "app_name": app_name,
+            "capacity_category": capacity,
+            "work_mode": work_mode,
+            "shift_hours": shift_hours,
+            **preset,  # Распаковываем дефолтные кабины и полосы выбранной категории
+        })
+        go_step(2)
+        st.rerun()
+
+# ==========================================
+# ШАГ 2: ИНФРАСТРУКТУРА И СПЕЦ-ОСНАЩЕНИЕ
+# ==========================================
+elif st.session_state.step == 2:
+    st.header("2. Инфраструктура и технические оснащения")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Кабины паспортного контроля (ПД)")
+        cabins_in = st.number_input(
+            "Кабин на въезд",
+            min_value=1,
+            value=st.session_state.calc_data["cabins_in"],
+        )
+        cabins_out = st.number_input(
+            "Кабин на выезд",
+            min_value=1,
+            value=st.session_state.calc_data["cabins_out"],
+        )
+
+        st.subheader("Полосы движения (Въезд / Выезд)")
+        c_l1, c_l2 = st.columns(2)
+        with c_l1:
+            lanes_auto_in = st.number_input(
+                "Легковые (Въезд)",
+                min_value=1,
+                value=st.session_state.calc_data["lanes_auto_in"],
+            )
+            lanes_truck_in = st.number_input(
+                "Грузовые (Въезд)",
+                min_value=0,
+                value=st.session_state.calc_data["lanes_truck_in"],
+            )
+            lanes_bus_in = st.number_input(
+                "Автобусы (Въезд)",
+                min_value=0,
+                value=st.session_state.calc_data["lanes_bus_in"],
+            )
+
+        with c_l2:
+            lanes_auto_out = st.number_input(
+                "Легковые (Выезд)",
+                min_value=1,
+                value=st.session_state.calc_data.get("lanes_auto_out", 3),
+            )
+            lanes_truck_out = st.number_input(
+                "Грузовые (Выезд)",
+                min_value=0,
+                value=st.session_state.calc_data.get("lanes_truck_out", 2),
+            )
+            lanes_bus_out = st.number_input(
+                "Автобусы (Выезд)",
+                min_value=0,
+                value=st.session_state.calc_data["lanes_bus_out"],
+            )
+
+    with col2:
+        st.subheader("Специальные комплексы")
+        has_idk = st.checkbox(
+            "Наличие ИДК",
+            value=st.session_state.calc_data["has_idk"],
+        )
+        has_rpm = st.checkbox(
+            "Система РПМ (въезд/выезд)",
+            value=st.session_state.calc_data["has_rpm"],
+        )
+
+        st.subheader("Кинологическое обеспечение")
+        k9_service = st.radio(
+            "Формат кинологического обеспечения",
+            options=["В штате КПП", "Приданные силы"],
+            index=0,
+            help="При досмотре автотранспорта наличие кинологов обязательно."
+        )
+
+        # -------------------------------------------------------------
+        # ДОБАВЛЯЕМ БЛОК РУКОВОДСТВА СЮДА:
+        # -------------------------------------------------------------
+        st.subheader("Руководящий состав КПП")
+        dep_general = st.checkbox(
+            "Заместитель начальника КПП", 
+            value=st.session_state.calc_data.get("deputies", {}).get("deputy_general", True)
+        )
+        dep_political = st.checkbox(
+            "Заместитель по воспитательной работе", 
+            value=st.session_state.calc_data.get("deputies", {}).get("deputy_political", False)
+        )
+        dep_tspk = st.checkbox(
+            "Заместитель по ТСПК", 
+            value=st.session_state.calc_data.get("deputies", {}).get("deputy_tspk", True)
+        )
+        dep_operational = st.checkbox(
+            "Заместитель по оперативной деятельности", 
+            value=st.session_state.calc_data.get("deputies", {}).get("deputy_operational", True)
+        )
+
+    st.markdown("---")
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button("⬅️ Назад"):
+            go_step(1)
+            st.rerun()
+    with c2:
+        if st.button("Рассчитать 📊", type="primary"):
+            st.session_state.calc_data.update({
+                "cabins_in": cabins_in,
+                "cabins_out": cabins_out,
+                "lanes_auto_in": lanes_auto_in,
+                "lanes_auto_out": lanes_auto_out,
+                "lanes_truck_in": lanes_truck_in,
+                "lanes_truck_out": lanes_truck_out,
+                "lanes_bus_in": lanes_bus_in,
+                "lanes_bus_out": lanes_bus_out,
+                "has_idk": has_idk,
+                "has_rpm": has_rpm,
+                "k9_service": k9_service,
+                "deputies": {
+                    "deputy_general": dep_general,
+                    "deputy_political": dep_political,
+                    "deputy_tspk": dep_tspk,
+                    "deputy_operational": dep_operational,
+                },
             })
+            go_step(3)
+            st.rerun()
 
-        df_tspk = pd.DataFrame(table_data)
+# ==========================================
+# ШАГ 3: РЕЗУЛЬТАТЫ
+# ==========================================
+elif st.session_state.step == 3:
+    st.header("3. Результаты расчета")
 
-        # 4. Отображаем таблицу с выпадающим списком моделей для тех классов, где они есть
-        edited_tspk_df = st.data_editor(
-            df_tspk,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "Категория": st.column_config.TextColumn("Категория", disabled=True),
-                "Класс ТСПК / Название": st.column_config.TextColumn("Класс ТСПК / Название", disabled=True),
-                "Модель техники": st.column_config.SelectboxColumn(
-                    "Модель техники",
-                    help="Выберите конкретную модель из справочника",
-                    options=[
-                        "Регула 4305", "ST-30 (Газпром)", "Ультрамаг-A6",
-                        "Каскад-2", "ЭТ-230", "СФИНКС ВМ-611",
-                        "Garrett Super Scanner", "Янтарь-1П", "С T-SCAN",
-                        "Стандартное (не указана)"
-                    ],
-                    required=True
-                ),
-                "Основная норма": st.column_config.NumberColumn("Основная норма", disabled=True),
-                "НЗ (10%)": st.column_config.NumberColumn("НЗ (10%)", disabled=True),
-                "Итого (потребность)": st.column_config.NumberColumn("Итого (потребность)", disabled=True),
-                "Ед. изм.": st.column_config.TextColumn("Ед. изм.", disabled=True),
-                "Примечание / Расчет": st.column_config.TextColumn("Примечание / Расчет", disabled=True)
-            }
-        )
+    data = st.session_state.calc_data
 
-    else:
-        st.info("Потребность в ТСПК не рассчитана.")
+    res_personnel = calculate_personnel(data)
+    res_tspk = calculate_tspk(data, res_personnel)
 
-# ---------------------------------------------------------
-# TAB 3: История расчетов
-# ---------------------------------------------------------
-with tab3:
-    st.subheader("Сохраненные расчеты")
-    if st.button("💾 Сохранить текущий расчет в базу"):
-        save_calculation(app_name, app_code, "Стандартная", input_data, {"personnel": res_personnel, "tspk": res_tspk})
-        st.success("Расчет успешно сохранен!")
+    st.subheader(f"📌 {data['app_name']} ({data['capacity_category']})")
 
-    history = get_calculation_history()
-    if history:
-        df_hist = pd.DataFrame(history, columns=["ID", "Дата/Время", "Наименование АПП", "Код", "Категория"])
-        st.dataframe(df_hist, use_container_width=True)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Состав смены", f"{res_personnel['shift_total']} чел.")
+    m2.metric("Общий штат смен", f"{res_personnel['total_duty']} чел.")
+    m3.metric("Руководство", f"{res_personnel['management_count']} чел.")
+    m4.metric("ИТОГО штат КПП", f"{res_personnel['total_full_staff']} чел.")
 
-# ---------------------------------------------------------
-# TAB 4: Справочники и редактирование
-# ---------------------------------------------------------
-with tab4:
-    st.subheader("⚙️ Управление классификатором ТСПК")
-    
-    raw_classes = get_tspk_classes()
-    df_raw_classes = pd.DataFrame(
-        raw_classes, 
-        columns=["ID", "Категория", "Класс ТСПК", "Тип нормирования", "Коэффициент", "Ед. изм.", "Примечание"]
+    st.markdown("---")
+
+    st.subheader("👥 Расчетная оргштатная структура пункта пропуска")
+    st.info(
+        "💡 **Примечание:** Приведенные данные являются ориентировочным расчетным штатом. "
+        "Окончательная оргштатная структура утверждается в соответствии с ведомственными приказами."
     )
 
-    admin_mode = st.toggle("🔒 Режим администратора (редактирование)")
+    all_personnel = res_personnel["management_table"] + res_personnel["duty_table"]
+    df_personnel = pd.DataFrame(all_personnel)
 
-    if admin_mode:
-        current_password = get_admin_password()
-        admin_password = st.text_input("Введите пароль администратора", type="password")
+    st.dataframe(
+        df_personnel,
+        column_config={
+            "category": "Подразделение / Группа",
+            "position": "Должность",
+            "in_shift": "В смене (чел)",
+            "total": "Всего штат (чел)",
+            "note": "Основание / Примечание",
+        },
+        width='stretch',
+        hide_index=True,
+    )
+
+    st.markdown("---")
+
+    st.subheader("📦 Нормативная потребность в ТСПК и стоимость")
+    df_tspk = pd.DataFrame(res_tspk)
+
+    grand_total_usd = df_tspk["total_price"].sum() if "total_price" in df_tspk.columns else 0
+
+    st.dataframe(
+        df_tspk,
+        column_config={
+            "category": "Категория",
+            "name": "Наименование ТСПК",
+            "selected_model": "Модель / Марка",
+            "required": "Потребность",
+            "reserve": "НЗ (10%)",
+            "total": "Всего",
+            "unit": "Ед. изм.",
+            "unit_price": st.column_config.NumberColumn("Цена за ед.", format="$ %,.2f"),
+            "total_price": st.column_config.NumberColumn("Итого стоимость", format="$ %,.2f"),
+            "note": "Примечание",
+        },
+        width='stretch',
+        hide_index=True,
+    )
+
+    st.subheader(f"💰 Общая стоимость оборудования ТСПК: **$ {grand_total_usd:,.2f}**")
+
+    st.markdown("---")
+    c1, c2, c3 = st.columns([1, 2, 4])
+    
+    with c1:
+        if st.button("⬅️ Изменить параметры"):
+            go_step(2)
+            st.rerun()
+            
+    with c2:
+        # СОЗДАЕМ EXCEL ФАЙЛ «НА ЛЕТУ»
+        import io
+        output = io.BytesIO()
         
-        if admin_password == current_password:
-            st.success("Режим редактирования активен.")
-
-            # Смена пароля
-            with (
-                    st.expander("🔑 Сменить пароль администратора"),
-                    st.form("change_pass_form"),
-                ):
-                    new_pass = st.text_input("Новый пароль", type="password")
-                    confirm_pass = st.text_input("Подтвердите новый пароль", type="password")
-                    submit_pass = st.form_submit_button("Сохранить новый пароль")
+        # Красивые названия столбцов для выгрузки
+        df_personnel_excel = df_personnel.rename(columns={
+            "category": "Категория»",
+            "position": "Должность",
+            "in_shift": "В смене (чел)",
+            "total": "Всего штат (чел)",
+            "note": "Основание / Примечание"
+        })
+        
+        df_tspk_excel = df_tspk.rename(columns={
+            "category": "Категория",
+            "name": "Наименование ТСПК",
+            "selected_model": "Модель / Марка",
+            "required": "Потребность",
+            "reserve": "НЗ (10%)",
+            "total": "Всего",
+            "unit": "Ед. изм.",
+            "unit_price": "Цена за ед. ($)",
+            "total_price": "Итого стоимость ($)",
+            "note": "Примечание"
+        })
+        
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            workbook = writer.book
+            
+            # Создаем стили: тонкая рамка для ячеек и выделенная шапка
+            border_format = workbook.add_format({
+                'border': 1, 
+                'valign': 'vcenter'
+            })
+            header_format = workbook.add_format({
+                'border': 1, 
+                'bold': True, 
+                'bg_color': '#D9E1F2',  # Нежно-голубой фон шапки
+                'valign': 'vcenter',
+                'align': 'center'
+            })
+            
+            # Словарик листов и датафреймов для обработки
+            sheets_data = {
+                'Штат КПП': df_personnel_excel,
+                'Спецификация ТСПК': df_tspk_excel
+            }
+            
+            for sheet_name, df in sheets_data.items():
+                # Создаем лист вручную
+                worksheet = workbook.add_worksheet(sheet_name)
+                
+                # 1. Записываем заголовки с красивым стилем
+                for col_idx, col_name in enumerate(df.columns):
+                    worksheet.write(0, col_idx, col_name, header_format)
+                
+                # 2. Записываем строки данных с обводкой ячеек
+                for row_idx, row in df.iterrows():
+                    for col_idx, val in enumerate(row):
+                        # Защита от пустых/NaN значений
+                        if pd.isna(val):
+                            val = ""
+                        worksheet.write(row_idx + 1, col_idx, val, border_format)
+                
+                # 3. Автоподбор ширины столбцов, чтобы ничего не сдвигалось
+                for idx, col in enumerate(df.columns):
+                    max_len = max(
+                        df[col].astype(str).map(len).max(),
+                        len(str(col))
+                    ) + 3  # небольшой запас по ширине
                     
-                    if submit_pass:
-                        if new_pass and new_pass == confirm_pass:
-                            set_admin_password(new_pass)
-                            st.success("Пароль успешно изменен!")
-                            st.rerun()
-                        else:
-                            st.error("Пароли не совпадают или поле пустое!")
+                    worksheet.set_column(idx, idx, max(max_len, 12))
+                    
+        processed_data = output.getvalue()
 
-            st.caption("Вы можете редактировать классы и нормативные коэффициенты ниже.")
-            
-            edited_df = st.data_editor(
-                df_raw_classes,
-                num_rows="dynamic",
-                use_container_width=True,
-                key="tspk_classes_editor"
+        st.download_button(
+            label="📥 Скачать отчет (Excel)",
+            data=processed_data,
+            file_name=f"Смена_Т_{data['app_name']}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            key="download_excel_report"
+        )
+
+    with c3:
+        if st.button("💾 Сохранить в историю"):
+            combined_results = {
+                "personnel": res_personnel,
+                "tspk": res_tspk,
+                "grand_total_usd": grand_total_usd,
+            }
+            calc_id = save_calculation(
+                app_name=data["app_name"],
+                app_code=None,
+                category=data["capacity_category"],
+                input_params=data,
+                results=combined_results,
             )
-            
-            if st.button("💾 Сохранить изменения в базе", type="primary"):
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM dict_tspk_classes")
-                for _, row in edited_df.iterrows():
-                    if pd.notna(row["Класс ТСПК"]) and str(row["Класс ТСПК"]).strip():
-                        cursor.execute("""
-                            INSERT INTO dict_tspk_classes (category, class_name, norm_type, ratio, unit, note)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (
-                            row["Категория"], 
-                            row["Класс ТСПК"], 
-                            row["Тип нормирования"], 
-                            float(row["Коэффициент"]), 
-                            row["Ед. изм."], 
-                            row["Примечание"]
-                        ))
-                conn.commit()
-                conn.close()
-                st.success("Классификатор успешно обновлен!")
-                st.rerun()
-        elif admin_password:
-            st.error("Неверный пароль!")
-    else:
-        st.dataframe(df_raw_classes.drop(columns=["ID"]), use_container_width=True)
+
+            st.success(f"Расчет успешно сохранен в базе данных! (ID записи: {calc_id})")
