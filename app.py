@@ -1,11 +1,253 @@
+import io
+
 import pandas as pd
 import streamlit as st
 
 from services.calc import calculate_personnel, calculate_tspk
-from services.db import init_db, save_calculation
+from services.db import (
+  delete_calculation,
+  get_all_calculations,
+  init_db,
+  save_calculation,
+)
 
 # Инициализация БД
 init_db()
+
+st.set_page_config(
+    page_title="Смена-Т | ГПС КР",
+    page_icon="🦅",
+    layout="wide",
+)
+
+def generate_excel_report(input_data: dict) -> bytes:
+  """Генерирует форматированный Excel-отчет на основе входных данных расчета."""
+  res_personnel = calculate_personnel(input_data)
+  res_tspk = calculate_tspk(input_data, res_personnel)
+
+  all_personnel = (
+      res_personnel["management_table"] + res_personnel["duty_table"]
+  )
+  df_personnel = pd.DataFrame(all_personnel)
+  df_tspk = pd.DataFrame(res_tspk)
+
+  df_personnel_excel = df_personnel.rename(
+      columns={
+          "category": "Категория",
+          "position": "Должность",
+          "in_shift": "В смене (чел)",
+          "total": "Всего штат (чел)",
+          "note": "Основание / Примечание",
+      }
+  )
+
+  df_tspk_excel = df_tspk.rename(
+      columns={
+          "category": "Категория",
+          "name": "Наименование ТСПК",
+          "selected_model": "Модель / Марка",
+          "required": "Потребность",
+          "reserve": "НЗ (10%)",
+          "total": "Всего",
+          "unit": "Ед. изм.",
+          "unit_price": "Цена за ед. ($)",
+          "total_price": "Итого стоимость ($)",
+          "note": "Примечание",
+      }
+  )
+
+  output = io.BytesIO()
+  with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    workbook = writer.book
+
+    border_format = workbook.add_format(
+        {"border": 1, "valign": "vcenter"}
+    )
+    header_format = workbook.add_format({
+        "border": 1,
+        "bold": True,
+        "bg_color": "#D9E1F2",
+        "valign": "vcenter",
+        "align": "center",
+    })
+
+    sheets_data = {
+        "Штат КПП": df_personnel_excel,
+        "Спецификация ТСПК": df_tspk_excel,
+    }
+
+    for sheet_name, df in sheets_data.items():
+      worksheet = workbook.add_worksheet(sheet_name)
+
+      for col_idx, col_name in enumerate(df.columns):
+        worksheet.write(0, col_idx, col_name, header_format)
+
+      for row_idx, row in df.iterrows():
+        for col_idx, val in enumerate(row):
+          if pd.isna(val):
+            val = ""
+          worksheet.write(row_idx + 1, col_idx, val, border_format)
+
+      for idx, col in enumerate(df.columns):
+        max_len = (
+            max(df[col].astype(str).map(len).max(), len(str(col))) + 3
+        )
+        worksheet.set_column(idx, idx, max(max_len, 12))
+
+  return output.getvalue()
+
+# ==========================================
+# 2. НАВИГАЦИЯ
+# ==========================================
+st.title("🦅 Смена-Т | Расчет потребностей пункта пропуска (ГПС КР)")
+
+# Горизонтальное меню в виде переключателя
+app_mode = st.radio(
+    "Режим работы",
+    ["🧮 Расчет пункта пропуска", "📜 История расчетов"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
+
+st.markdown("---")
+
+# Если выбрана история — показываем архив и останавливаем выполнение калькулятора
+if app_mode == "📜 История расчетов":
+  st.header("📜 История сохраненных расчетов")
+  st.caption("Архив всех ранее сохраненных конфигураций пунктов пропуска.")
+
+  import json
+
+  history_items = get_all_calculations()
+
+  if not history_items:
+    st.info(
+        "В базе данных пока нет сохраненных расчетов. Сделайте расчет и нажмите"
+        " кнопку «Сохранить в историю» на третьем шаге."
+    )
+  else:
+    for item in history_items:
+      try:
+        res_data = (
+            json.loads(item["results"])
+            if isinstance(item["results"], str)
+            else item["results"]
+        )
+        total_usd = res_data.get("grand_total_usd", 0)
+      except Exception:
+        total_usd = 0
+
+      with st.expander(
+          f"📍 {item['app_name']} | {item['category']} (от"
+          f" {item['created_at']})"
+      ):
+        st.write(f"**ID записи в базе:** {item['id']}")
+       # st.write(f"**Общая стоимость ТСПК:** $ {total_usd:,.2f}")
+
+        # Безопасно парсим входные параметры
+        try:
+          input_data = (
+              json.loads(item["input_params"])
+              if isinstance(item["input_params"], str)
+              else item["input_params"]
+          )
+        except Exception:
+          input_data = {}
+
+        # Выводим основные входные параметры, если они есть
+        if input_data:
+          st.markdown("#### 📋 Параметры расчета:")
+          col1, col2 = st.columns(2)
+          with col1:
+            st.write(
+                f"- **Наименование:** {input_data.get('app_name', '—')}"
+            )
+            st.write(
+                f"- **Пропускная способность:**"
+                f" {input_data.get('capacity_category', '—')}"
+            )
+          with col2:
+            st.write(f"- **Режим работы:** {input_data.get('work_mode', '—')}")
+            st.write(
+                f"- **Смена:** {input_data.get('shift_hours', '—')} часов"
+            )
+
+        # Человекопонятное отображение деталей вместо сырого JSON
+        with st.expander("📊 Детали сохраненной конфигурации"):
+          st.markdown("##### 🚗 Инфраструктура и полосы движения")
+          col_inf1, col_inf2 = st.columns(2)
+          with col_inf1:
+            st.write(
+                f"- **Кабины въезд / выезд:**"
+                f" {input_data.get('cabins_in', 0)} /"
+                f" {input_data.get('cabins_out', 0)}"
+            )
+            st.write(
+                f"- **Легковые полосы (в/в):**"
+                f" {input_data.get('lanes_car_in', 0)} /"
+                f" {input_data.get('lanes_car_out', 0)}"
+            )
+            st.write(
+                f"- **Грузовые полосы (в/в):**"
+                f" {input_data.get('lanes_truck_in', 0)} /"
+                f" {input_data.get('lanes_truck_out', 0)}"
+            )
+          with col_inf2:
+            st.write(
+                f"- **Автобусные полосы (в/в):**"
+                f" {input_data.get('lanes_bus_in', 0)} /"
+                f" {input_data.get('lanes_bus_out', 0)}"
+            )
+            st.write(
+                "- **Наличие ИДК:**"
+                f" {'✅ Да' if input_data.get('has_idk') else '❌ Нет'}"
+            )
+            st.write(
+                "- **Система РПМ:**"
+                f" {'✅ Да' if input_data.get('has_rpm') else '❌ Нет'}"
+            )
+
+          # Если в результатах есть данные по оборудованию или штату, выведем их тоже красиво
+          if res_data:
+            st.markdown("##### 💰 Финансовые и ресурсные итоги")
+            st.write(
+                f"- **Итоговая стоимость ТСПК:** **$**"
+                f" **{res_data.get('grand_total_usd', 0):,.2f}**"
+            )
+
+        st.markdown("---")
+
+        # Генерируем Excel-отчет "на лету" из сохраненных входных параметров
+        excel_bytes = generate_excel_report(input_data)
+
+        # Делаем две аккуратные колонки: слева — скачать, справа — удалить
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+          st.download_button(
+              label="📥 Скачать отчёт (Excel)",
+              data=excel_bytes,
+              file_name=(
+                  f"Смена_Т_{input_data.get('app_name', 'Пункт_пропуска')}.xlsx"
+              ),
+              mime=(
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              ),
+              key=f"dl_excel_{item['id']}",
+          )
+        with col_btn2:
+          if st.button(
+              f"🗑️ Удалить расчет (ID: {item['id']})",
+              key=f"del_calc_{item['id']}",
+          ):
+            delete_calculation(item["id"])
+            st.success(f"Расчет ID {item['id']} успешно удален!")
+            st.rerun()
+
+  st.stop()  # Останавливает отрисовку шагов калькулятора, когда открыта история
+
+# ==========================================
+# ДАЛЬШЕ ИДЕТ КОД КАЛЬКУЛЯТОРА (Шаги 1, 2, 3)
+# ==========================================
 
 st.set_page_config(
     page_title="Смена-Т | ГПС КР",
@@ -73,7 +315,7 @@ def go_step(step_number: int):
     st.session_state.step = step_number
 
 
-st.title("🦅 Смена-Т — Расчет потребностей пункта пропуска (ГПС КР)")
+# st.title("🦅 Смена-Т — Расчет потребностей пункта пропуска (ГПС КР)")
 st.caption(f"Шаг {st.session_state.step} из 3")
 st.progress(st.session_state.step / 3)
 
@@ -339,89 +581,18 @@ elif st.session_state.step == 3:
             st.rerun()
             
     with c2:
-        # СОЗДАЕМ EXCEL ФАЙЛ «НА ЛЕТУ»
-        import io
-        output = io.BytesIO()
-        
-        # Красивые названия столбцов для выгрузки
-        df_personnel_excel = df_personnel.rename(columns={
-            "category": "Категория»",
-            "position": "Должность",
-            "in_shift": "В смене (чел)",
-            "total": "Всего штат (чел)",
-            "note": "Основание / Примечание"
-        })
-        
-        df_tspk_excel = df_tspk.rename(columns={
-            "category": "Категория",
-            "name": "Наименование ТСПК",
-            "selected_model": "Модель / Марка",
-            "required": "Потребность",
-            "reserve": "НЗ (10%)",
-            "total": "Всего",
-            "unit": "Ед. изм.",
-            "unit_price": "Цена за ед. ($)",
-            "total_price": "Итого стоимость ($)",
-            "note": "Примечание"
-        })
-        
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            workbook = writer.book
-            
-            # Создаем стили: тонкая рамка для ячеек и выделенная шапка
-            border_format = workbook.add_format({
-                'border': 1, 
-                'valign': 'vcenter'
-            })
-            header_format = workbook.add_format({
-                'border': 1, 
-                'bold': True, 
-                'bg_color': '#D9E1F2',  # Нежно-голубой фон шапки
-                'valign': 'vcenter',
-                'align': 'center'
-            })
-            
-            # Словарик листов и датафреймов для обработки
-            sheets_data = {
-                'Штат КПП': df_personnel_excel,
-                'Спецификация ТСПК': df_tspk_excel
-            }
-            
-            for sheet_name, df in sheets_data.items():
-                # Создаем лист вручную
-                worksheet = workbook.add_worksheet(sheet_name)
-                
-                # 1. Записываем заголовки с красивым стилем
-                for col_idx, col_name in enumerate(df.columns):
-                    worksheet.write(0, col_idx, col_name, header_format)
-                
-                # 2. Записываем строки данных с обводкой ячеек
-                for row_idx, row in df.iterrows():
-                    for col_idx, val in enumerate(row):
-                        # Защита от пустых/NaN значений
-                        if pd.isna(val):
-                            val = ""
-                        worksheet.write(row_idx + 1, col_idx, val, border_format)
-                
-                # 3. Автоподбор ширины столбцов, чтобы ничего не сдвигалось
-                for idx, col in enumerate(df.columns):
-                    max_len = max(
-                        df[col].astype(str).map(len).max(),
-                        len(str(col))
-                    ) + 3  # небольшой запас по ширине
-                    
-                    worksheet.set_column(idx, idx, max(max_len, 12))
-                    
-        processed_data = output.getvalue()
+      processed_data = generate_excel_report(data)
 
-        st.download_button(
-            label="📥 Скачать отчет (Excel)",
-            data=processed_data,
-            file_name=f"Смена_Т_{data['app_name']}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            key="download_excel_report"
-        )
+      st.download_button(
+          label="📥 Скачать отчет (Excel)",
+          data=processed_data,
+          file_name=f"Смена_Т_{data['app_name']}.xlsx",
+          mime=(
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          ),
+          type="primary",
+          key="download_excel_report",
+      )
 
     with c3:
         if st.button("💾 Сохранить в историю"):

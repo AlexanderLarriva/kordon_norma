@@ -230,19 +230,22 @@ def get_calculation_history(limit: int = 20) -> list[dict]:
         return history
     
 def get_all_calculations() -> list[dict]:
-    """Возвращает все сохраненные расчеты из истории."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, app_name, category, created_at, input_params, results FROM calculations ORDER BY id DESC")
-        return [dict(row) for row in cursor.fetchall()]
+  """Возвращает все сохраненные расчеты из истории."""
+  with get_connection() as conn:
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, app_name, category, created_at, input_params, results FROM"
+        " calculation_history ORDER BY id DESC"
+    )
+    return [dict(row) for row in cursor.fetchall()]
 
 
 def delete_calculation(calc_id: int) -> None:
-    """Удаляет расчет из истории по ID."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM calculations WHERE id = ?", (calc_id,))
-        conn.commit()
+  """Удаляет расчет из истории по ID."""
+  with get_connection() as conn:
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM calculation_history WHERE id = ?", (calc_id,))
+    conn.commit()
 
 
 if __name__ == "__main__":
