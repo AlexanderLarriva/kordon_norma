@@ -247,6 +247,41 @@ def delete_calculation(calc_id: int) -> None:
     cursor.execute("DELETE FROM calculation_history WHERE id = ?", (calc_id,))
     conn.commit()
 
+def get_tspk_dict() -> list[dict]:
+    """Возвращает все записи справочника ТСПК в виде списка словарей."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM dict_tspk ORDER BY id")
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def save_tspk_dict(updated_df) -> None:
+    """Сохраняет изменения из DataFrame в таблицу dict_tspk (полная перезапись/синхронизация)."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Очищаем таблицу и заново заливаем актуальные данные из редактора
+        cursor.execute("DELETE FROM dict_tspk")
+        
+        for _, row in updated_df.iterrows():
+            cursor.execute(
+                """
+                INSERT INTO dict_tspk 
+                (id, category, equipment_name, selected_model, norm_type, ratio, unit, unit_price_usd, note) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(row["id"]) if pd.notna(row.get("id")) else None,
+                    row.get("category", ""),
+                    row.get("equipment_name", ""),
+                    row.get("selected_model", ""),
+                    row.get("norm_type", ""),
+                    float(row.get("ratio", 1.0)),
+                    row.get("unit", ""),
+                    float(row.get("unit_price_usd", 0.0)),
+                    row.get("note", ""),
+                ),
+            )
+        conn.commit()
 
 if __name__ == "__main__":
     init_db()
