@@ -432,6 +432,19 @@ def save_tspk_dict(updated_df) -> None:
             )
         conn.commit()
 
+def reset_tspk_to_default() -> None:
+    """Сбрасывает справочник ТСПК: полностью очищает таблицу и заново заполняет её дефолтными значениями из init_db."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Полностью очищаем текущую таблицу справочника
+        cursor.execute("DELETE FROM dict_tspk")
+        # Сбрасываем автоинкремент ID (опционально, чтобы ID снова шли с 1)
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='dict_tspk'")
+        conn.commit()
+    
+    # Повторно вызываем инициализацию, которая заново зальет стандартный список оборудования
+    init_db()
+
 if __name__ == "__main__":
     init_db()
     print("База данных успешно инициализирована (dict_tspk единый).")

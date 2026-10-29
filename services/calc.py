@@ -119,8 +119,29 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
         pass
 
     cabins_total = data.get("cabins_in", 0) + data.get("cabins_out", 0)
-    lanes_in = data.get("lanes_truck_in", 1)
-    lanes_out = data.get("lanes_truck_out", 1)
+
+    # Проверяем режим полос: универсальные или раздельные по видам транспорта
+    is_mixed_lanes = data.get("is_mixed_lanes", True)
+
+    if is_mixed_lanes:
+        lanes_in = int(data.get("lanes_in", 1))
+        lanes_out = int(data.get("lanes_out", 1))
+    else:
+        # Суммируем полосы по всем типам транспорта (легковые, грузовые, автобусы)
+        lanes_in = (
+            int(data.get("lanes_car_in", 0)) +
+            int(data.get("lanes_truck_in", 0)) +
+            int(data.get("lanes_bus_in", 0))
+        )
+        lanes_out = (
+            int(data.get("lanes_car_out", 0)) +
+            int(data.get("lanes_truck_out", 0)) +
+            int(data.get("lanes_bus_out", 0))
+        )
+        # На случай если ничего не выбрано, ставим минимум 1
+        lanes_in = max(lanes_in, 1)
+        lanes_out = max(lanes_out, 1)
+
     lanes_total = lanes_in + lanes_out
 
     duty_table = personnel_res.get("duty_table", [])
@@ -145,36 +166,49 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
         # Обработка правил расчета
         if norm_type == "per_arm":
             required = math.ceil(cabins_total * ratio)
+            # Честный расчет 10% резерва с округлением вверх, но минимум 1, если требуется много
             reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_entry_lane":
             required = math.ceil(lanes_in * ratio)
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "manual":
-            # Ручной ввод через UI (если значение не задано, по умолчанию 1 или 0)
-            required = int(data.get(item["equipment_name"], 1))
+            required = int(data.get("manual_auto_cabins", 0))
+            reserve = 0
         elif norm_type == "per_workstation":
             required = math.ceil(cabins_total * ratio)
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_spec_room":
-            required = 1 if cabins_total > 0 else 0
+            # Количество оборудования зависит от количества комнат специальной проверки
+            spec_rooms = int(data.get("spec_rooms_count", 1))
+            required = math.ceil(spec_rooms * ratio)
+            reserve = 0
+            # reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_controller":
             required = math.ceil(pd_personnel_count * ratio)
-            reserve = 2 if required > 0 else 0
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_lane":
             required = math.ceil(lanes_total * ratio)
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type in ("per_site", "per_checkpoint"):
             required = math.ceil(1 * ratio)
+            reserve = 0
         elif norm_type == "per_idk":
             if data.get("has_idk"):
                 required = math.ceil(1 * ratio)
+            reserve = 0
         elif norm_type == "per_inspection_group":
             required = math.ceil(inspection_group_count * ratio)
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_inspection_personnel":
             required = math.ceil(inspection_personnel_count * ratio)
-            reserve = 1 if required > 0 else 0
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_outdoor_personnel":
             outdoor_count = inspection_personnel_count + 2
             required = math.ceil(outdoor_count * ratio)
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_lane_barriers":
             required = math.ceil(lanes_total * ratio)
+            reserve = math.ceil(required * reserve_pct) if required > 0 else 0
 
         total_qty = required + reserve
         unit_price = float(item["unit_price_usd"])

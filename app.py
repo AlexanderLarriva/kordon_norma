@@ -6,12 +6,14 @@ import streamlit as st
 
 from services.calc import calculate_personnel, calculate_tspk
 from services.db import (
-    delete_calculation,
-    get_all_calculations,
-    get_tspk_dict,
-    init_db,
-    save_calculation,
-    save_tspk_dict,
+  delete_calculation,
+  get_all_calculations,
+  get_connection,
+  get_tspk_dict,
+  init_db,
+  reset_tspk_to_default,
+  save_calculation,
+  save_tspk_dict,
 )
 
 # Инициализация БД
@@ -249,32 +251,125 @@ if app_mode == "📜 История расчетов":
 # РЕЖИМ: СПРАВОЧНИК ТСПК
 # ==========================================
 elif app_mode == "⚙️ Справочник ТСПК":
-  st.header("⚙️ Управление справочником ТСПК")
-  st.caption(
-      "Здесь вы можете редактировать наименования оборудования, модели,"
-      " нормативы, единицы измерения и цены. Изменения сохраняются в базу"
-      " данных."
-  )
+    st.header("⚙️ Управление справочником ТСПК")
+    st.caption(
+        "Здесь вы можете просматривать справочник, изменять цены и модели, "
+        "а также добавлять новые позиции или удалять старые."
+    )
 
-  tspk_data = get_tspk_dict()
-  df_tspk_editable = pd.DataFrame(tspk_data)
+    tspk_data = get_tspk_dict()
+    df_tspk_editable = pd.DataFrame(tspk_data)
 
-  edited_df = st.data_editor(
-      df_tspk_editable,
-      num_rows="dynamic",
-      use_container_width=True,
-      key="tspk_editor",
-  )
+    # Создаем вкладки, чтобы не сваливать всё в одну кучу
+    tab_edit, tab_add, tab_delete = st.tabs(["📋 Таблица и цены", "➕ Добавить позицию", "🗑️ Удалить позицию"])
 
-  if st.button("💾 Сохранить изменения в справочник", type="primary"):
-    try:
-      save_tspk_dict(edited_df)
-      st.success("Справочник ТСПК успешно обновлен в базе данных!")
-      st.rerun()
-    except Exception as e:
-      st.error(f"Ошибка при сохранении справочника: {e}")
+    with tab_edit:
+        st.subheader("Редактирование цен и моделей")
+        st.info("Измените нужные ячейки в таблице и нажмите кнопку сохранения внизу.")
 
-  st.stop()  # Останавливает отрисовку калькулятора, когда открыт справочник
+        edited_df = st.data_editor(
+            df_tspk_editable,
+            column_config={
+                "id": st.column_config.NumberColumn("ID", disabled=True),
+                "category": st.column_config.TextColumn("Категория", disabled=True),
+                "equipment_name": st.column_config.TextColumn("Наименование ТСПК", width="large", disabled=True),
+                "selected_model": st.column_config.TextColumn("Модель / Марка"),
+                "unit_price_usd": st.column_config.NumberColumn("Цена за ед. ($)", format="$ %.2f"),
+                "unit": st.column_config.TextColumn("Ед. изм.", disabled=True),
+                "norm_type": None,
+                "ratio": None,
+                "note": st.column_config.TextColumn("Примечание"),
+            },
+            disabled=["id", "category", "equipment_name", "unit"],
+            num_rows="fixed",  # Фиксируем строки, чтобы не ломать таблицу случайно
+            use_container_width=True,
+            key="tspk_editor",
+        )
+
+        col_save, col_reset = st.columns(2)
+        with col_save:
+            if st.button("💾 Сохранить изменения цен", type="primary"):
+                try:
+                    save_tspk_dict(edited_df)
+                    st.success("Цены и модели успешно обновлены!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Ошибка при сохранении: {e}")
+
+        with col_reset:
+            if st.button("🔄 Сбросить к исходным значениям"):
+                try:
+                    reset_tspk_to_default()
+                    st.success("Справочник сброшен к заводским настройкам!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Ошибка при сбросе: {e}")
+
+    with tab_add:
+        st.subheader("Добавление нового оборудования")
+        with st.form("add_tspk_form"):
+            new_cat = st.selectbox("Категория", [
+                "Паспортный контроль", 
+                "Досмотровые средства", 
+                "Обнаружение оружия, ВВ и НВ", 
+                "Аудио-, видео- и фотодокументирование", 
+                "Эксплуатационные / технологические средства", 
+                "Учебно-материальная база"
+            ])
+            new_name = st.text_input("Наименование оборудования")
+            new_model = st.text_input("Модель / Марка")
+            
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                new_price = st.number_input("Цена за единицу ($)", min_value=0.0, value=100.0, step=10.0)
+                new_unit = st.selectbox("Единица измерения", ["шт.", "компл."])
+            with col_f2:
+                new_norm_type = st.selectbox("Тип нормы расчета", ["per_checkpoint", "per_workstation", "per_inspection_group", "per_controller", "manual"])
+                new_ratio = st.number_input("Коэффициент нормы (ratio)", value=1.0, step=0.1)
+            
+            new_note = st.text_input("Примечание (например, 1 на пункт пропуска)")
+            
+            submitted = st.form_submit_button("➕ Добавить в справочник")
+            if submitted:
+                if new_name:
+                    try:
+                        with get_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                INSERT INTO dict_tspk (category, equipment_name, selected_model, norm_type, ratio, unit, unit_price_usd, note)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (new_cat, new_name, new_model, new_norm_type, new_ratio, new_unit, new_price, new_note))
+                            conn.commit()
+                        st.success(f"Оборудование «{new_name}» успешно добавлено!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Ошибка при добавлении: {e}")
+                else:
+                    st.warning("Пожалуйста, заполните наименование оборудования.")
+
+    with tab_delete:
+        st.subheader("Удаление позиции из справочника")
+        st.warning("Будьте аккуратны: удаленная позиция пропадет из расчетов.")
+        
+        # Выпадающий список для выбора, что удалить
+        tspk_items = {f"{row['id']} | {row['category']} — {row['equipment_name']} ({row['selected_model']})": row['id'] for row in tspk_data}
+        
+        selected_item_label = st.selectbox("Выберите оборудование для удаления", options=list(tspk_items.keys()))
+        
+        if st.button("🗑️ Удалить выбранную позицию", type="primary"):  # noqa: SIM102
+            if selected_item_label:
+                item_id_to_delete = tspk_items[selected_item_label]
+                try:
+                    with get_connection() as conn:
+                        cursor = conn.cursor()
+                        cursor.execute("DELETE FROM dict_tspk WHERE id = ?", (item_id_to_divider := item_id_to_delete,))
+                        conn.commit()
+                    st.success("Позиция успешно удалена!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Ошибка при удалении: {e}")
+
+    st.stop()
 
 # ==========================================
 # ДАЛЬШЕ ИДЕТ КОД КАЛЬКУЛЯТОРА (Шаги 1, 2, 3)
@@ -353,6 +448,9 @@ if "calc_data" not in st.session_state:
       "has_idk": True,
       "has_rpm": True,
       "k9_service": "Приданные силы",
+      "is_mixed_lanes": False,
+      "lanes_mixed_in": 2,
+      "lanes_mixed_out": 2,
   }
 
 
@@ -423,133 +521,200 @@ if st.session_state.step == 1:
 # ШАГ 2: ИНФРАСТРУКТУРА И СПЕЦ-ОСНАЩЕНИЕ
 # ==========================================
 elif st.session_state.step == 2:
-  st.header("2. Инфраструктура и технические оснащения")
+    st.header("2. Инфраструктура и технические оснащения")
 
-  col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-  with col1:
-    st.subheader("Кабины паспортного контроля (ПД)")
-    cabins_in = st.number_input(
-        "Кабин на въезд",
-        min_value=1,
-        value=st.session_state.calc_data["cabins_in"],
-    )
-    cabins_out = st.number_input(
-        "Кабин на выезд",
-        min_value=1,
-        value=st.session_state.calc_data["cabins_out"],
-    )
+    with col1:
+        st.subheader("Кабины паспортного контроля (ПД)")
+        cabins_in = st.number_input(
+            "Кабин на въезд",
+            min_value=1,
+            value=st.session_state.calc_data["cabins_in"],
+        )
+        cabins_out = st.number_input(
+            "Кабин на выезд",
+            min_value=1,
+            value=st.session_state.calc_data["cabins_out"],
+        )
+        
+        # Ручной выбор автоматизированных кабин
+        st.subheader("Автоматизированные кабины (E-Gate)")
+        manual_auto_cabins = st.number_input(
+            "Количество кабин E-Gate",
+            min_value=0,
+            value=st.session_state.calc_data.get("manual_auto_cabins", 0),
+            help="Количество автоматизированных кабин пограничного контроля (E-Gate) задается вручную.",
+        )
+        
+        st.subheader("Специальные помещения")
+        spec_rooms_count = st.number_input(
+            "Количество комнат специальной проверки",
+            min_value=0,
+            value=st.session_state.calc_data.get("spec_rooms_count", 1),
+            help="Количество оборудованных комнат специальной проверки документов в пункте пропуска.",
+        )
 
-    st.subheader("Полосы движения (Въезд / Выезд)")
-    c_l1, c_l2 = st.columns(2)
-    with c_l1:
-      lanes_auto_in = st.number_input(
-          "Легковые (Въезд)",
-          min_value=1,
-          value=st.session_state.calc_data["lanes_auto_in"],
-      )
-      lanes_truck_in = st.number_input(
-          "Грузовые (Въезд)",
-          min_value=0,
-          value=st.session_state.calc_data["lanes_truck_in"],
-      )
-      lanes_bus_in = st.number_input(
-          "Автобусы (Въезд)",
-          min_value=0,
-          value=st.session_state.calc_data["lanes_bus_in"],
-      )
+        st.subheader("Полосы движения")
+        
+        # Переключатель для универсальных полос
+        is_mixed_lanes = st.checkbox(
+            "Все полосы для всех видов транспорта (универсальные)",
+            value=st.session_state.calc_data.get("is_mixed_lanes", False),
+            help="При активации полосы не делятся по типам ТС, а рассчитываются как единые универсальные полосы движения.",
+        )
 
-    with c_l2:
-      lanes_auto_out = st.number_input(
-          "Легковые (Выезд)",
-          min_value=1,
-          value=st.session_state.calc_data.get("lanes_auto_out", 3),
-      )
-      lanes_truck_out = st.number_input(
-          "Грузовые (Выезд)",
-          min_value=0,
-          value=st.session_state.calc_data.get("lanes_truck_out", 2),
-      )
-      lanes_bus_out = st.number_input(
-          "Автобусы (Выезд)",
-          min_value=0,
-          value=st.session_state.calc_data["lanes_bus_out"],
-      )
+        if is_mixed_lanes:
+            c_m1, c_m2 = st.columns(2)
+            with c_m1:
+                lanes_mixed_in = st.number_input(
+                    "Универсальные полосы (Въезд)",
+                    min_value=1,
+                    value=max(1, int(st.session_state.calc_data.get("lanes_mixed_in", 2))),
+                )
+            with c_m2:
+                lanes_mixed_out = st.number_input(
+                    "Универсальные полосы (Выезд)",
+                    min_value=1,
+                    value=max(1, int(st.session_state.calc_data.get("lanes_mixed_out", 2))),
+                )
 
-  with col2:
-    st.subheader("Специальные комплексы")
-    has_idk = st.checkbox(
-        "Наличие ИДК",
-        value=st.session_state.calc_data["has_idk"],
-    )
-    has_rpm = st.checkbox(
-        "Система РПМ (въезд/выезд)",
-        value=st.session_state.calc_data["has_rpm"],
-    )
+            # Для совместимости со старой логикой грузовых/легковых полос присваиваем универсальные значения:
+            lanes_auto_in = lanes_mixed_in
+            lanes_auto_out = lanes_mixed_out
+            lanes_truck_in = lanes_mixed_in
+            lanes_truck_out = lanes_mixed_out
+            lanes_bus_in = 0
+            lanes_bus_out = 0
 
-    st.subheader("Кинологическое обеспечение")
-    k9_service = st.radio(
-        "Формат кинологического обеспечения",
-        options=["В штате КПП", "Приданные силы"],
-        index=0,
-        help="При досмотре автотранспорта наличие кинологов обязательно.",
-    )
+            st.caption("🔒 Специализированные полосы заблокированы, так как выбран универсальный режим.")
+            c_l1, c_l2 = st.columns(2)
+            with c_l1:
+                st.number_input("Легковые (Въезд)", value=lanes_auto_in, disabled=True, key="dis_auto_in")
+                st.number_input("Грузовые (Въезд)", value=lanes_truck_in, disabled=True, key="dis_truck_in")
+                st.number_input("Автобусы (Въезд)", value=0, disabled=True, key="dis_bus_in")
+            with c_l2:
+                st.number_input("Легковые (Выезд)", value=lanes_auto_out, disabled=True, key="dis_auto_out")
+                st.number_input("Грузовые (Выезд)", value=lanes_truck_out, disabled=True, key="dis_truck_out")
+                st.number_input("Автобусы (Выезд)", value=0, disabled=True, key="dis_bus_out")
 
-    st.subheader("Руководящий состав КПП")
-    dep_general = st.checkbox(
-        "Заместитель начальника КПП",
-        value=st.session_state.calc_data.get("deputies", {}).get(
-            "deputy_general", True
-        ),
-    )
-    dep_political = st.checkbox(
-        "Заместитель по воспитательной работе",
-        value=st.session_state.calc_data.get("deputies", {}).get(
-            "deputy_political", False
-        ),
-    )
-    dep_tspk = st.checkbox(
-        "Заместитель по ТСПК",
-        value=st.session_state.calc_data.get("deputies", {}).get(
-            "deputy_tspk", True
-        ),
-    )
-    dep_operational = st.checkbox(
-        "Заместитель по оперативной деятельности",
-        value=st.session_state.calc_data.get("deputies", {}).get(
-            "deputy_operational", True
-        ),
-    )
+        else:
+            lanes_mixed_in = 0
+            lanes_mixed_out = 0
+            c_l1, c_l2 = st.columns(2)
+            with c_l1:
+                lanes_auto_in = st.number_input(
+                    "Легковые (Въезд)",
+                    min_value=1,
+                    value=st.session_state.calc_data.get("lanes_auto_in", 2),
+                )
+                lanes_truck_in = st.number_input(
+                    "Грузовые (Въезд)",
+                    min_value=0,
+                    value=st.session_state.calc_data.get("lanes_truck_in", 1),
+                )
+                lanes_bus_in = st.number_input(
+                    "Автобусы (Въезд)",
+                    min_value=0,
+                    value=st.session_state.calc_data.get("lanes_bus_in", 0),
+                )
 
-  st.markdown("---")
-  c1, c2 = st.columns([1, 5])
-  with c1:
-    if st.button("⬅️ Назад"):
-      go_step(1)
-      st.rerun()
-  with c2:
-    if st.button("Рассчитать 📊", type="primary"):
-      st.session_state.calc_data.update({
-          "cabins_in": cabins_in,
-          "cabins_out": cabins_out,
-          "lanes_auto_in": lanes_auto_in,
-          "lanes_auto_out": lanes_auto_out,
-          "lanes_truck_in": lanes_truck_in,
-          "lanes_truck_out": lanes_truck_out,
-          "lanes_bus_in": lanes_bus_in,
-          "lanes_bus_out": lanes_bus_out,
-          "has_idk": has_idk,
-          "has_rpm": has_rpm,
-          "k9_service": k9_service,
-          "deputies": {
-              "deputy_general": dep_general,
-              "deputy_political": dep_political,
-              "deputy_tspk": dep_tspk,
-              "deputy_operational": dep_operational,
-          },
-      })
-      go_step(3)
-      st.rerun()
+            with c_l2:
+                lanes_auto_out = st.number_input(
+                    "Легковые (Выезд)",
+                    min_value=1,
+                    value=st.session_state.calc_data.get("lanes_auto_out", 2),
+                )
+                lanes_truck_out = st.number_input(
+                    "Грузовые (Выезд)",
+                    min_value=0,
+                    value=st.session_state.calc_data.get("lanes_truck_out", 1),
+                )
+                lanes_bus_out = st.number_input(
+                    "Автобусы (Выезд)",
+                    min_value=0,
+                    value=st.session_state.calc_data.get("lanes_bus_out", 0),
+                )
+
+    with col2:
+        st.subheader("Специальные комплексы")
+        has_idk = st.checkbox(
+            "Наличие ИДК",
+            value=st.session_state.calc_data["has_idk"],
+        )
+        has_rpm = st.checkbox(
+            "Система РПМ (въезд/выезд)",
+            value=st.session_state.calc_data["has_rpm"],
+        )
+
+        st.subheader("Кинологическое обеспечение")
+        k9_service = st.radio(
+            "Формат кинологического обеспечения",
+            options=["В штате КПП", "Приданные силы"],
+            index=0,
+            help="При досмотре автотранспорта наличие кинологов обязательно.",
+        )
+
+        st.subheader("Руководящий состав КПП")
+        dep_general = st.checkbox(
+            "Заместитель начальника КПП",
+            value=st.session_state.calc_data.get("deputies", {}).get(
+                "deputy_general", True
+            ),
+        )
+        dep_political = st.checkbox(
+            "Заместитель по воспитательной работе",
+            value=st.session_state.calc_data.get("deputies", {}).get(
+                "deputy_political", False
+            ),
+        )
+        dep_tspk = st.checkbox(
+            "Заместитель по ТСПК",
+            value=st.session_state.calc_data.get("deputies", {}).get(
+                "deputy_tspk", True
+            ),
+        )
+        dep_operational = st.checkbox(
+            "Заместитель по оперативной деятельности",
+            value=st.session_state.calc_data.get("deputies", {}).get(
+                "deputy_operational", True
+            ),
+        )
+
+    st.markdown("---")
+    c1, c2 = st.columns([1, 5])
+    with c1:
+        if st.button("⬅️ Назад"):
+            go_step(1)
+            st.rerun()
+    with c2:
+        if st.button("Рассчитать 📊", type="primary"):
+            st.session_state.calc_data.update({
+                "cabins_in": cabins_in,
+                "cabins_out": cabins_out,
+                "manual_auto_cabins": manual_auto_cabins,
+                "spec_rooms_count": spec_rooms_count,
+                "is_mixed_lanes": is_mixed_lanes,
+                "lanes_mixed_in": lanes_mixed_in,
+                "lanes_mixed_out": lanes_mixed_out,
+                "lanes_auto_in": lanes_auto_in,
+                "lanes_auto_out": lanes_auto_out,
+                "lanes_truck_in": lanes_truck_in,
+                "lanes_truck_out": lanes_truck_out,
+                "lanes_bus_in": lanes_bus_in,
+                "lanes_bus_out": lanes_bus_out,
+                "has_idk": has_idk,
+                "has_rpm": has_rpm,
+                "k9_service": k9_service,
+                "deputies": {
+                    "deputy_general": dep_general,
+                    "deputy_political": dep_political,
+                    "deputy_tspk": dep_tspk,
+                    "deputy_operational": dep_operational,
+                },
+            })
+            go_step(3)
+            st.rerun()
 
 # ==========================================
 # ШАГ 3: РЕЗУЛЬТАТЫ
