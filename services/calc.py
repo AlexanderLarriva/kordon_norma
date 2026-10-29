@@ -10,7 +10,7 @@ def calculate_personnel(data: dict) -> dict:
     cabins_in = data.get("cabins_in", 0)
     cabins_out = data.get("cabins_out", 0)
     shift_hours = data.get("shift_hours", 12)
-    category = data.get("capacity_category", "")
+    # category = data.get("capacity_category", "")
 
     # Загружаем коэффициенты сменности
     settings = get_settings()
@@ -119,7 +119,9 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
         pass
 
     cabins_total = data.get("cabins_in", 0) + data.get("cabins_out", 0)
-    lanes_total = data.get("lanes_truck_in", 1) + data.get("lanes_truck_out", 1)
+    lanes_in = data.get("lanes_truck_in", 1)
+    lanes_out = data.get("lanes_truck_out", 1)
+    lanes_total = lanes_in + lanes_out
 
     duty_table = personnel_res.get("duty_table", [])
     pd_personnel_count = sum(
@@ -128,6 +130,9 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
     inspection_personnel_count = sum(
         int(r["in_shift"]) for r in duty_table if ("Осмотр ТС" in r["position"] or "Часовой" in r["position"]) and str(r["in_shift"]).isdigit()
     )
+    
+    # Количество досмотровых групп (по числу личного состава ОТС в смене, минимум 1)
+    inspection_group_count = inspection_personnel_count if inspection_personnel_count > 0 else 1
 
     final_items = []
 
@@ -137,12 +142,20 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
         required = 0
         reserve = 0
 
+        # Обработка правил расчета
         if norm_type == "per_arm":
             required = math.ceil(cabins_total * ratio)
             reserve = math.ceil(required * reserve_pct) if required > 0 else 0
+        elif norm_type == "per_entry_lane":
+            required = math.ceil(lanes_in * ratio)
+        elif norm_type == "manual":
+            # Ручной ввод через UI (если значение не задано, по умолчанию 1 или 0)
+            required = int(data.get(item["equipment_name"], 1))
+        elif norm_type == "per_workstation":
+            required = math.ceil(cabins_total * ratio)
         elif norm_type == "per_spec_room":
             required = 1 if cabins_total > 0 else 0
-        elif norm_type == "per_pd_personnel":
+        elif norm_type == "per_controller":
             required = math.ceil(pd_personnel_count * ratio)
             reserve = 2 if required > 0 else 0
         elif norm_type == "per_lane":
@@ -152,17 +165,23 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
         elif norm_type == "per_idk":
             if data.get("has_idk"):
                 required = math.ceil(1 * ratio)
+        elif norm_type == "per_inspection_group":
+            required = math.ceil(inspection_group_count * ratio)
         elif norm_type == "per_inspection_personnel":
             required = math.ceil(inspection_personnel_count * ratio)
             reserve = 1 if required > 0 else 0
-        elif norm_type == "per_barrier_lane":
-            required = math.ceil(2 * ratio)
+        elif norm_type == "per_outdoor_personnel":
+            outdoor_count = inspection_personnel_count + 2
+            required = math.ceil(outdoor_count * ratio)
+        elif norm_type == "per_lane_barriers":
+            required = math.ceil(lanes_total * ratio)
 
         total_qty = required + reserve
         unit_price = float(item["unit_price_usd"])
         total_price = total_qty * unit_price
 
-        if total_qty > 0:
+        # Выводим позицию, если есть потребность либо если это ручной ввод
+        if total_qty > 0 or norm_type == "manual":
             final_items.append({
                 "category": item["category"],
                 "name": item["equipment_name"],
