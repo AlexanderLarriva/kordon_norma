@@ -284,8 +284,8 @@ if app_mode == "📜 История расчетов":
             )
             st.write(
                 f"- **Легковые полосы (в/в):**"
-                f" {input_data.get('lanes_car_in', 0)} /"
-                f" {input_data.get('lanes_car_out', 0)}"
+                f" {input_data.get('lanes_auto_in', 0)} /"
+                f" {input_data.get('lanes_auto_out', 0)}"
             )
             st.write(
                 f"- **Грузовые полосы (в/в):**"
