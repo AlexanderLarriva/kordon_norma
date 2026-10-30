@@ -108,6 +108,12 @@ def render_personnel_editor() -> None:
 
     with add_tab:
         st.subheader("Новая должность")
+        st.caption(
+            "Новая роль будет участвовать в расчете по выбранной функциональной группе. "
+            "Для типа «manual» укажите в JSON параметр input_key, соответствующий "
+            "ключу исходных данных. Условия включения должны использовать ключи, "
+            "которые уже поддерживает расчетный модуль."
+        )
         with st.form("add_personnel_form", clear_on_submit=True):
             category = st.text_input("Категория", value="Дополнительный персонал")
             position = st.text_input("Наименование должности")
