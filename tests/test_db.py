@@ -121,6 +121,13 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(len(restored), len(defaults))
         self.assertEqual(restored[0]["selected_model"], default_model)
 
+        passport_atlas = next(
+            item
+            for item in restored
+            if item["equipment_name"] == "Электронные атласы паспортов"
+        )
+        self.assertEqual(passport_atlas["selected_model"], "Regula Passport")
+
 
 if __name__ == "__main__":
     unittest.main()
