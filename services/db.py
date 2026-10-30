@@ -122,7 +122,7 @@ def init_db():
                 (category, position_name, role_code, calculation_type, quantity,
                  apply_shift_factor, condition_key, rule_params, is_active,
                  is_system, note, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
                 [
                     (*item[:8], item[8], item[9], index)
                     for index, item in enumerate(DEFAULT_PERSONNEL)
