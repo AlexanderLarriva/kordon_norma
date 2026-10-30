@@ -25,11 +25,7 @@ def _get_multiplier(data: dict, rule_params: dict) -> int:
         return int(data.get("cabins_in", 0)) + int(data.get("cabins_out", 0))
     if calculation_type == "per_direction":
         directions = rule_params.get("directions", ["in", "out"])
-        return sum(
-            1 for direction in directions
-            if (direction == "in" and data.get("has_rpm"))
-            or (direction == "out" and data.get("has_rpm"))
-        )
+        return len(directions)
     if calculation_type in ("per_inspection_group", "per_inspection_personnel"):
         return int(data.get("_inspection_personnel_count", 0))
     if calculation_type == "manual":
@@ -119,7 +115,8 @@ def calculate_personnel(data: dict) -> dict:
 
         if calculation_type == "manual":
             in_shift = "-"
-            total = 0
+            input_key = rule_params.get("input_key")
+            total = math.ceil(float(data.get(input_key, 0))) if input_key else 0
         else:
             multiplier = _get_multiplier(calc_data, rule_params)
             per_shift_count = float(item["quantity"]) * multiplier
@@ -149,7 +146,7 @@ def calculate_personnel(data: dict) -> dict:
             "note": item["note"] or "",
         }
 
-        if item["functional_group"] == "management":
+        if item["functional_group"] in ("management", "technical_management"):
             management_rows.append(row)
             management_total += total
         else:
