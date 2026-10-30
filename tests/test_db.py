@@ -195,6 +195,54 @@ class DatabaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             db.save_personnel_dict(personnel)
 
+    def test_personnel_dictionary_rejects_removing_system_roles(self):
+        personnel = db.get_personnel_dict()
+        personnel = [
+            item for item in personnel
+            if item["role_code"] != "tspk_engineer"
+        ]
+
+        with self.assertRaisesRegex(ValueError, "Системные должности"):
+            db.save_personnel_dict(personnel)
+
+        saved_codes = {item["role_code"] for item in db.get_personnel_dict()}
+        self.assertIn("tspk_engineer", saved_codes)
+
+    def test_personnel_dictionary_rejects_changing_system_flag(self):
+        personnel = db.get_personnel_dict()
+        personnel[0]["is_system"] = False
+
+        with self.assertRaisesRegex(ValueError, "Системные должности"):
+            db.save_personnel_dict(personnel)
+
+    def test_personnel_dictionary_accepts_custom_role(self):
+        personnel = db.get_personnel_dict()
+        personnel.append({
+            "id": None,
+            "category": "Дополнительный персонал",
+            "position_name": "Специалист связи",
+            "role_code": "communications_specialist",
+            "functional_group": "other",
+            "calculation_type": "per_checkpoint",
+            "quantity": 1,
+            "apply_shift_factor": False,
+            "condition_key": None,
+            "rule_params": {"source": "manual"},
+            "is_active": True,
+            "is_system": False,
+            "note": "Пользовательская должность",
+            "sort_order": 100,
+        })
+
+        db.save_personnel_dict(personnel)
+        saved = next(
+            item for item in db.get_personnel_dict()
+            if item["role_code"] == "communications_specialist"
+        )
+        self.assertEqual(saved["position_name"], "Специалист связи")
+        self.assertEqual(saved["rule_params"], {"source": "manual"})
+        self.assertFalse(saved["is_system})
+
     def test_save_dictionary_and_reset_to_defaults(self):
         defaults = db.get_tspk_dict()
         self.assertGreater(len(defaults), 0)
