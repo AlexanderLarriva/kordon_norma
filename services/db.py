@@ -45,25 +45,25 @@ DB_PATH = get_db_path()
 # Стандартный шаблон должностей. role_code — стабильный ключ для расчётной логики
 # и связей с ТСПК; position_name можно менять без изменения программного кода.
 DEFAULT_PERSONNEL = [
-    ("Руководство КПП", "Начальник КПП", "checkpoint_chief", "per_checkpoint", 1, 0, None, {}, 1, "Начальник пункта пропуска."),
-    ("Руководство КПП", "Заместитель начальника КПП", "deputy_general", "per_checkpoint", 1, 0, "deputies.deputy_general", {}, 1, "Включается по настройке."),
-    ("Руководство КПП", "Заместитель по воспитательной работе", "deputy_education", "per_checkpoint", 1, 0, "deputies.deputy_political", {}, 0, "Включается по настройке."),
-    ("Руководство КПП", "Заместитель по ТСПК", "deputy_tspk", "per_checkpoint", 1, 0, "deputies.deputy_tspk", {}, 1, "Включается по настройке."),
-    ("Руководство КПП", "Заместитель по оперативной деятельности", "deputy_operations", "per_checkpoint", 1, 0, "deputies.deputy_operational", {}, 1, "Включается по настройке."),
-    ("Управление и техническая служба", "Старший смены (ССПН)", "shift_supervisor", "per_shift", 1, 1, None, {}, 1, "Один человек в каждой смене."),
-    ("Управление и техническая служба", "Дежурный по КПП", "checkpoint_duty_officer", "per_shift", 1, 1, None, {}, 1, "Один человек в каждой смене."),
-    ("Управление и техническая служба", "Инженер по ТСПК", "tspk_engineer", "per_checkpoint", 2, 0, None, {}, 1, "Два человека на весь пункт пропуска."),
-    ("Управление и техническая служба", "Старший техник ТСПК", "tspk_senior_technician", "per_shift", 2, 1, None, {}, 1, "Два человека в каждой смене."),
-    ("Управление и техническая служба", "Оператор комплексных систем безопасности", "security_systems_operator", "per_shift", 1, 1, None, {}, 0, "Дополнительная должность; по умолчанию отключена."),
-    ("Паспортный контроль", "Проверка документов (ПД), въезд", "document_control_in", "per_cabin", 1, 1, None, {"direction": "in"}, 1, "Один контролер на кабину въезда в каждой смене."),
-    ("Паспортный контроль", "Проверка документов (ПД), выезд", "document_control_out", "per_cabin", 1, 1, None, {"direction": "out"}, 1, "Один контролер на кабину выезда в каждой смене."),
-    ("Режимная служба и досмотр", "Часовой у шлагбаума", "barrier_guard", "per_checkpoint", 2, 0, None, {"allocation": "manual_by_direction"}, 1, "Два человека на КПП; распределение по направлениям настраивается."),
-    ("Режимная служба и досмотр", "Старший по осмотру транспортных средств", "vehicle_inspection_senior", "per_lane", 1, 1, None, {"lane_scope": "all"}, 1, "Один на каждую учитываемую полосу в каждой смене."),
-    ("Режимная служба и досмотр", "Младший пограничный наряд", "vehicle_inspection_junior", "per_lane", 2, 1, None, {"lane_scope": "all"}, 1, "Два на каждую учитываемую полосу в каждой смене."),
-    ("Специализированные наряды", "Инспектор-кинолог", "canine_inspector", "per_shift", 1, 1, "k9_staff_enabled", {}, 0, "Штатная должность; по умолчанию отключена."),
-    ("Специализированные наряды", "Оператор РПМ", "rpm_operator", "per_direction", 1, 1, "has_rpm", {"directions": ["in", "out"]}, 1, "По одному на въезд и выезд в каждой смене при наличии РПМ."),
-    ("Специализированные наряды", "Оператор ИДК", "idk_operator", "per_shift", 1, 1, "has_idk", {}, 1, "Один в каждой смене при наличии ИДК."),
-    ("Специализированные наряды", "Инспектор ИДК", "idk_inspector", "per_shift", 2, 1, "has_idk", {}, 1, "Два в каждой смене при наличии ИДК."),
+    ("Руководство КПП", "Начальник КПП", "checkpoint_chief", "management", "per_checkpoint", 1, 0, None, {}, 1, "Начальник пункта пропуска."),
+    ("Руководство КПП", "Заместитель начальника КПП", "deputy_general", "management", "per_checkpoint", 1, 0, "deputies.deputy_general", {}, 1, "Включается по настройке."),
+    ("Руководство КПП", "Заместитель по воспитательной работе", "deputy_education", "management", "per_checkpoint", 1, 0, "deputies.deputy_political", {}, 0, "Включается по настройке."),
+    ("Руководство КПП", "Заместитель по ТСПК", "deputy_tspk", "technical_management", "per_checkpoint", 1, 0, "deputies.deputy_tspk", {}, 1, "Включается по настройке."),
+    ("Руководство КПП", "Заместитель по оперативной деятельности", "deputy_operations", "management", "per_checkpoint", 1, 0, "deputies.deputy_operational", {}, 1, "Включается по настройке."),
+    ("Управление и техническая служба", "Старший смены (ССПН)", "shift_supervisor", "shift_management", "per_shift", 1, 1, None, {}, 1, "Один человек в каждой смене."),
+    ("Управление и техническая служба", "Дежурный по КПП", "checkpoint_duty_officer", "shift_management", "per_shift", 1, 1, None, {}, 1, "Один человек в каждой смене."),
+    ("Управление и техническая служба", "Инженер по ТСПК", "tspk_engineer", "technical_maintenance", "per_checkpoint", 2, 0, None, {}, 1, "Два человека на весь пункт пропуска."),
+    ("Управление и техническая служба", "Старший техник ТСПК", "tspk_senior_technician", "technical_maintenance", "per_shift", 2, 1, None, {}, 1, "Два человека в каждой смене."),
+    ("Управление и техническая служба", "Оператор комплексных систем безопасности", "security_systems_operator", "security_systems", "per_shift", 1, 1, None, {}, 0, "Дополнительная должность; по умолчанию отключена."),
+    ("Паспортный контроль", "Проверка документов (ПД), въезд", "document_control_in", "passport_control", "per_cabin", 1, 1, None, {"direction": "in"}, 1, "Один контролер на кабину въезда в каждой смене."),
+    ("Паспортный контроль", "Проверка документов (ПД), выезд", "document_control_out", "passport_control", "per_cabin", 1, 1, None, {"direction": "out"}, 1, "Один контролер на кабину выезда в каждой смене."),
+    ("Режимная служба и досмотр", "Часовой у шлагбаума", "barrier_guard", "checkpoint_security", "per_checkpoint", 2, 0, None, {"allocation": "manual_by_direction"}, 1, "Два человека на КПП; распределение по направлениям настраивается."),
+    ("Режимная служба и досмотр", "Старший по осмотру транспортных средств", "vehicle_inspection_senior", "vehicle_inspection", "per_lane", 1, 1, None, {"lane_scope": "all"}, 1, "Один на каждую учитываемую полосу в каждой смене."),
+    ("Режимная служба и досмотр", "Младший пограничный наряд", "vehicle_inspection_junior", "vehicle_inspection", "per_lane", 2, 1, None, {"lane_scope": "all"}, 1, "Два на каждую учитываемую полосу в каждой смене."),
+    ("Специализированные наряды", "Инспектор-кинолог", "canine_inspector", "canine_service", "per_shift", 1, 1, "k9_staff_enabled", {}, 0, "Штатная должность; по умолчанию отключена."),
+    ("Специализированные наряды", "Оператор РПМ", "rpm_operator", "radiation_monitoring", "per_direction", 1, 1, "has_rpm", {"directions": ["in", "out"]}, 1, "По одному на въезд и выезд в каждой смене при наличии РПМ."),
+    ("Специализированные наряды", "Оператор ИДК", "idk_operator", "idk_operation", "per_shift", 1, 1, "has_idk", {}, 1, "Один в каждой смене при наличии ИДК."),
+    ("Специализированные наряды", "Инспектор ИДК", "idk_inspector", "idk_inspection", "per_shift", 2, 1, "has_idk", {}, 1, "Два в каждой смене при наличии ИДК."),
 ]
 
 
@@ -103,6 +103,7 @@ def init_db():
                 category TEXT NOT NULL,
                 position_name TEXT NOT NULL,
                 role_code TEXT NOT NULL UNIQUE,
+                functional_group TEXT NOT NULL DEFAULT 'other',
                 calculation_type TEXT NOT NULL,
                 quantity REAL NOT NULL DEFAULT 1,
                 apply_shift_factor INTEGER NOT NULL DEFAULT 0,
@@ -115,20 +116,56 @@ def init_db():
             )
         """)
 
+
+        # Миграция ранее созданного справочника: добавляем функциональную группу.
+        personnel_columns = {
+            row["name"] for row in cursor.execute("PRAGMA table_info(dict_personnel)")
+        }
+        if "functional_group" not in personnel_columns:
+            cursor.execute(
+                "ALTER TABLE dict_personnel ADD COLUMN functional_group TEXT NOT NULL DEFAULT 'other'"
+            )
+            legacy_groups = {
+          "checkpoint_chief": "management",
+          "deputy_general": "management",
+          "deputy_education": "management",
+          "deputy_tspk": "technical_management",
+          "deputy_operations": "management",
+          "shift_supervisor": "shift_management",
+          "checkpoint_duty_officer": "shift_management",
+          "tspk_engineer": "technical_maintenance",
+          "tspk_senior_technician": "technical_maintenance",
+          "security_systems_operator": "security_systems",
+          "document_control_in": "passport_control",
+          "document_control_out": "passport_control",
+          "barrier_guard": "checkpoint_security",
+          "vehicle_inspection_senior": "vehicle_inspection",
+          "vehicle_inspection_junior": "vehicle_inspection",
+          "canine_inspector": "canine_service",
+          "rpm_operator": "radiation_monitoring",
+          "idk_operator": "idk_operation",
+          "idk_inspector": "idk_inspection"
+}
+            for role_code, functional_group in legacy_groups.items():
+                cursor.execute(
+                    "UPDATE dict_personnel SET functional_group = ? WHERE role_code = ?",
+                    (functional_group, role_code),
+                )
+
         cursor.execute("SELECT COUNT(*) FROM dict_personnel")
         if cursor.fetchone()[0] == 0:
             cursor.executemany(
                 """INSERT INTO dict_personnel
-                (category, position_name, role_code, calculation_type, quantity,
-                 apply_shift_factor, condition_key, rule_params, is_active,
-                 is_system, note, sort_order)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+                (category, position_name, role_code, functional_group,
+                 calculation_type, quantity, apply_shift_factor, condition_key,
+                 rule_params, is_active, is_system, note, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
                 [
                     (
-                        *item[:7],
-                        json.dumps(item[7], ensure_ascii=False),
-                        item[8],
+                        *item[:8],
+                        json.dumps(item[8], ensure_ascii=False),
                         item[9],
+                        item[10],
                         index,
                     )
                     for index, item in enumerate(DEFAULT_PERSONNEL)
@@ -459,7 +496,7 @@ def save_personnel_dict(updated_items) -> None:
     """Сохраняет справочник персонала из списка словарей или pandas DataFrame."""
     records = updated_items.to_dict("records") if hasattr(updated_items, "to_dict") else list(updated_items)
     required = {
-        "category", "position_name", "role_code", "calculation_type",
+        "category", "position_name", "role_code", "functional_group", "calculation_type",
         "quantity", "apply_shift_factor", "condition_key", "rule_params",
         "is_active", "is_system", "note", "sort_order",
     }
@@ -489,6 +526,7 @@ def save_personnel_dict(updated_items) -> None:
             str(item["category"]).strip(),
             str(item["position_name"]).strip(),
             role_code,
+            str(item["functional_group"]).strip(),
             str(item["calculation_type"]).strip(),
             float(item["quantity"]),
             int(bool(item["apply_shift_factor"])),
@@ -504,10 +542,10 @@ def save_personnel_dict(updated_items) -> None:
         conn.execute("DELETE FROM dict_personnel")
         conn.executemany(
             """INSERT INTO dict_personnel
-            (id, category, position_name, role_code, calculation_type, quantity,
-             apply_shift_factor, condition_key, rule_params, is_active, is_system,
-             note, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (id, category, position_name, role_code, functional_group,
+             calculation_type, quantity, apply_shift_factor, condition_key,
+             rule_params, is_active, is_system, note, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             prepared,
         )
 
