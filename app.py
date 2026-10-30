@@ -282,7 +282,7 @@ elif app_mode == "⚙️ Справочник ТСПК":
             },
             disabled=["id", "category", "equipment_name", "unit"],
             num_rows="fixed",  # Фиксируем строки, чтобы не ломать таблицу случайно
-            use_container_width=True,
+            width='content',
             key="tspk_editor",
         )
 
@@ -307,7 +307,7 @@ elif app_mode == "⚙️ Справочник ТСПК":
 
     with tab_add:
         st.subheader("Добавление нового оборудования")
-        with st.form("add_tspk_form"):
+        with st.form("add_tspk_form", clear_on_submit=True):  # clear_on_submit=True автоматически очистит все поля формы после успешной отправки!
             new_cat = st.selectbox("Категория", [
                 "Паспортный контроль", 
                 "Досмотровые средства", 
@@ -324,8 +324,16 @@ elif app_mode == "⚙️ Справочник ТСПК":
                 new_price = st.number_input("Цена за единицу ($)", min_value=0.0, value=100.0, step=10.0)
                 new_unit = st.selectbox("Единица измерения", ["шт.", "компл."])
             with col_f2:
-                new_norm_type = st.selectbox("Тип нормы расчета", ["per_checkpoint", "per_workstation", "per_inspection_group", "per_controller", "manual"])
-                new_ratio = st.number_input("Коэффициент нормы (ratio)", value=1.0, step=0.1)
+                norm_mapping = {
+                    "На весь пункт пропуска (фиксировано)": "per_checkpoint",
+                    "На каждое рабочее место (1:1)": "per_workstation",
+                    "На каждую досмотровую группу": "per_inspection_group",
+                    "На каждого контроллера / инспектора": "per_controller",
+                    "На комнату специальной проверки": "per_spec_room",
+                    "Количество выбирается оператором": "manual"
+                }
+                selected_norm_label = st.selectbox("Как рассчитывается норма?", options=list(norm_mapping.keys()))
+                new_norm_type = norm_mapping[selected_norm_label]
             
             new_note = st.text_input("Примечание (например, 1 на пункт пропуска)")
             
@@ -333,15 +341,18 @@ elif app_mode == "⚙️ Справочник ТСПК":
             if submitted:
                 if new_name:
                     try:
-                        with get_connection() as conn:
+                        # Объединяем контекст спиннера и подключения к БД через запятую
+                        with st.spinner("Сохранение нового оборудования в базу..."), get_connection() as conn:
                             cursor = conn.cursor()
                             cursor.execute("""
                                 INSERT INTO dict_tspk (category, equipment_name, selected_model, norm_type, ratio, unit, unit_price_usd, note)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            """, (new_cat, new_name, new_model, new_norm_type, new_ratio, new_unit, new_price, new_note))
+                                VALUES (?, ?, ?, ?, 1.0, ?, ?, ?)
+                            """, (new_cat, new_name, new_model, new_norm_type, new_unit, new_price, new_note))
                             conn.commit()
-                        st.success(f"Оборудование «{new_name}» успешно добавлено!")
-                        st.rerun()
+                        
+                        # Всплывающее уведомление в углу экрана
+                        st.toast(f"Оборудование «{new_name}» успешно добавлено!", icon="✅")
+                        
                     except Exception as e:
                         st.error(f"Ошибка при добавлении: {e}")
                 else:
@@ -354,20 +365,21 @@ elif app_mode == "⚙️ Справочник ТСПК":
         # Выпадающий список для выбора, что удалить
         tspk_items = {f"{row['id']} | {row['category']} — {row['equipment_name']} ({row['selected_model']})": row['id'] for row in tspk_data}
         
-        selected_item_label = st.selectbox("Выберите оборудование для удаления", options=list(tspk_items.keys()))
+        selected_item_label = st.selectbox("Выберите оборудование для удаления", options=list(tspk_items.keys()), key="delete_select")
         
-        if st.button("🗑️ Удалить выбранную позицию", type="primary"):  # noqa: SIM102
-            if selected_item_label:
-                item_id_to_delete = tspk_items[selected_item_label]
-                try:
-                    with get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute("DELETE FROM dict_tspk WHERE id = ?", (item_id_to_divider := item_id_to_delete,))
-                        conn.commit()
-                    st.success("Позиция успешно удалена!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Ошибка при удалении: {e}")
+        if st.button("🗑️ Удалить выбранную позицию", type="primary"):
+            item_id_to_delete = tspk_items[selected_item_label]
+            try:
+                # Объединяем спиннер и подключение к БД в один with (SIM117)
+                with st.spinner("Удаление позиции из базы..."), get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM dict_tspk WHERE id = ?", (item_id_to_delete,))
+                    conn.commit()
+                
+                # Всплывающее уведомление в углу экрана
+                st.toast("Позиция успешно удалена!", icon="🗑️")
+            except Exception as e:
+                st.error(f"Ошибка при удалении: {e}")
 
     st.stop()
 
