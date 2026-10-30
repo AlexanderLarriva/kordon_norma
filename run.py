@@ -16,7 +16,7 @@ if __name__ == "__main__":
         "streamlit",
         "run",
         str(app_path),
-        "--server.headless=true",
+        "--server.headless=false",
         "--global.developmentMode=false",
     ]
     sys.exit(stcli.main())
