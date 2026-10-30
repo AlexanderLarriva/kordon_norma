@@ -2,7 +2,7 @@
 
 import math
 
-from services.db import get_connection, get_settings
+from services.db import get_connection, get_personnel_dict, get_settings
 
 
 def _get_multiplier(data: dict, rule_params: dict) -> int:
@@ -207,16 +207,14 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
 
     lanes_total = lanes_in + lanes_out
 
-    duty_table = personnel_res.get("duty_table", [])
-    pd_personnel_count = sum(
-        int(r["in_shift"]) for r in duty_table if "Проверка документов" in r["position"] and str(r["in_shift"]).isdigit()
-    )
-    inspection_personnel_count = sum(
-        int(r["in_shift"]) for r in duty_table if ("Осмотр ТС" in r["position"] or "Часовой" in r["position"]) and str(r["in_shift"]).isdigit()
-    )
-    
-    # Количество досмотровых групп (по числу личного состава ОТС в смене, минимум 1)
-    inspection_group_count = inspection_personnel_count if inspection_personnel_count > 0 else 1
+    group_counts = personnel_res.get("functional_group_counts", {})
+    role_counts = personnel_res.get("role_counts", {})
+    pd_personnel_count = group_counts.get("passport_control", 0)
+    inspection_personnel_count = group_counts.get("vehicle_inspection", 0)
+
+    # Досмотровые группы считаются по досмотровому составу и часовым у шлагбаума.
+    barrier_guards = role_counts.get("barrier_guard", {}).get("total", 0)
+    inspection_group_count = inspection_personnel_count + barrier_guards
 
     final_items = []
 
@@ -274,7 +272,7 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
             required = math.ceil(inspection_personnel_count * ratio)
             reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_outdoor_personnel":
-            outdoor_count = inspection_personnel_count + 2
+            outdoor_count = inspection_personnel_count + barrier_guards
             required = math.ceil(outdoor_count * ratio)
             reserve = math.ceil(required * reserve_pct) if required > 0 else 0
         elif norm_type == "per_lane_barriers":
