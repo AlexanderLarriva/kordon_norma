@@ -79,7 +79,10 @@ def _render_advanced_editor() -> None:
                 "rule_params": st.column_config.TextColumn(
                     "Параметры правила (JSON)", width="large"
                 ),
-                "is_active": st.column_config.CheckboxColumn(\n                "Активна",\n                help="Если выключить, должность не будет учитываться в новых расчётах. Запись сохранится.",\n            ),
+                "is_active": st.column_config.CheckboxColumn(
+                    "Активна",
+                    help="Если выключить, должность не будет учитываться в новых расчётах. Запись сохранится.",
+                ),
                 "is_system": st.column_config.CheckboxColumn(
                     "Системная", disabled=True
                 ),
@@ -283,7 +286,10 @@ def _render_simple_editor(personnel: list[dict]) -> None:
                 "Принцип расчёта",
                 options=simple_options,
             ),
-            "apply_shift_factor": st.column_config.CheckboxColumn(\n                "Учитывать сменность",\n                help="Умножать норматив на коэффициент сменности и включать должность в состав смены.",\n            ),
+            "apply_shift_factor": st.column_config.CheckboxColumn(
+                "Учитывать сменность",
+                help="Умножать норматив на коэффициент сменности и включать должность в состав смены.",
+            ),
             "is_active": st.column_config.CheckboxColumn("Активна"),
             "note": st.column_config.TextColumn("Примечание", width="large"),
         },
