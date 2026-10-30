@@ -243,6 +243,11 @@ def _render_simple_editor(personnel: list[dict]) -> None:
     ]
     table = pd.DataFrame(rows)
     version = st.session_state.get("personnel_simple_version", 0)
+    simple_options = [
+        label for code, label in CALCULATION_LABELS.items() if code != "manual"
+    ]
+    if any(item["calculation_type"] == "manual" for item in personnel):
+        simple_options.append(CALCULATION_LABELS["manual"])
     edited = st.data_editor(
         table,
         column_config={
@@ -252,7 +257,7 @@ def _render_simple_editor(personnel: list[dict]) -> None:
             "quantity": st.column_config.NumberColumn("Количество", min_value=0.0, step=1.0),
             "calculation_type": st.column_config.SelectboxColumn(
                 "Принцип расчёта",
-                options=list(CALCULATION_LABELS.values()),
+                options=simple_options,
             ),
             "apply_shift_factor": st.column_config.CheckboxColumn("Учитывать сменность"),
             "is_active": st.column_config.CheckboxColumn("Активна"),
@@ -306,7 +311,7 @@ def _render_simple_add(personnel: list[dict]) -> None:
         with col2:
             calculation_type = st.selectbox(
                 "Принцип расчёта",
-                options=list(CALCULATION_LABELS),
+                options=[code for code in CALCULATION_LABELS if code != "manual"],
                 format_func=lambda value: CALCULATION_LABELS[value],
             )
         apply_shift = st.checkbox("Учитывать количество смен", value=True)
