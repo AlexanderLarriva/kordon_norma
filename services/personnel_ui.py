@@ -234,7 +234,7 @@ def _render_simple_editor(personnel: list[dict]) -> None:
             "category": item["category"],
             "position_name": item["position_name"],
             "quantity": item["quantity"],
-            "calculation_type": item["calculation_type"],
+            "calculation_type": CALCULATION_LABELS.get(item["calculation_type"], item["calculation_type"]),
             "apply_shift_factor": item["apply_shift_factor"],
             "is_active": item["is_active"],
             "note": item["note"],
@@ -252,8 +252,7 @@ def _render_simple_editor(personnel: list[dict]) -> None:
             "quantity": st.column_config.NumberColumn("Количество", min_value=0.0, step=1.0),
             "calculation_type": st.column_config.SelectboxColumn(
                 "Принцип расчёта",
-                options=list(CALCULATION_LABELS),
-                format_func=lambda value: CALCULATION_LABELS.get(value, value),
+                options=list(CALCULATION_LABELS.values()),
             ),
             "apply_shift_factor": st.column_config.CheckboxColumn("Учитывать сменность"),
             "is_active": st.column_config.CheckboxColumn("Активна"),
@@ -276,6 +275,10 @@ def _render_simple_editor(personnel: list[dict]) -> None:
                         "calculation_type", "apply_shift_factor", "is_active", "note",
                     ):
                         item[field] = row[field]
+                    item["calculation_type"] = next(
+                        code for code, label in CALCULATION_LABELS.items()
+                        if label == row["calculation_type"]
+                    )
                 save_personnel_dict(list(by_code.values()))
                 st.session_state["personnel_simple_version"] = version + 1
                 st.success("Справочник сохранён.")
