@@ -539,6 +539,21 @@ def save_personnel_dict(updated_items) -> None:
         ))
 
     with get_connection() as conn:
+        existing_system_codes = {
+            row["role_code"]
+            for row in conn.execute(
+                "SELECT role_code FROM dict_personnel WHERE is_system = 1"
+            ).fetchall()
+        }
+        submitted_system_codes = {
+            item[3] for item in prepared if item[11] == 1
+        }
+        if submitted_system_codes != existing_system_codes:
+            raise ValueError(
+                "Системные должности нельзя удалять или менять их признак. "
+                "Отключите должность флагом «Активна»."
+            )
+
         conn.execute("DELETE FROM dict_personnel")
         conn.executemany(
             """INSERT INTO dict_personnel
