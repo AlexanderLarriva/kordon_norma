@@ -28,7 +28,7 @@ st.set_page_config(
 
 
 def generate_excel_report(input_data: dict) -> bytes:
-  """Генерирует форматированный Excel-отчет на основе входных данных расчета."""
+  """Генерирует форматированный Excel-отчет с итоговыми строками."""
   res_personnel = calculate_personnel(input_data)
   res_tspk = calculate_tspk(input_data, res_personnel)
 
@@ -69,40 +69,119 @@ def generate_excel_report(input_data: dict) -> bytes:
       }
   )
 
+  # Итоговые строки: текстовые значения не суммируем, числовые поля складываем.
+  personnel_total = {column: "" for column in df_personnel_excel.columns}
+  if len(df_personnel_excel.columns):
+      personnel_total[df_personnel_excel.columns[0]] = "ИТОГО"
+  if "В смене (чел)" in df_personnel_excel:
+      shift_values = pd.to_numeric(df_personnel_excel["В смене (чел)"], errors="coerce")
+      shift_sum = shift_values.sum()
+      personnel_total["В смене (чел)"] = int(shift_sum) if float(shift_sum).is_integer() else shift_sum
+      if shift_values.notna().sum() == 0:
+          personnel_total["В смене (чел)"] = "—"
+  if "Всего штат (чел)" in df_personnel_excel:
+      personnel_total["Всего штат (чел)"] = int(df_personnel_excel["Всего штат (чел)"].sum())
+
+  tspk_total = {column: "" for column in df_tspk_excel.columns}
+  if len(df_tspk_excel.columns):
+      tspk_total[df_tspk_excel.columns[0]] = "ИТОГО"
+  for column in ("Потребность", "НЗ (10%)", "Всего", "Итого стоимость ($)"):
+      if column in df_tspk_excel:
+          total_value = pd.to_numeric(df_tspk_excel[column], errors="coerce").sum()
+          tspk_total[column] = (
+              round(float(total_value), 2)
+              if column == "Итого стоимость ($)"
+              else int(total_value)
+          )
+
   output = io.BytesIO()
   with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
     workbook = writer.book
 
-    border_format = workbook.add_format({"border": 1, "valign": "vcenter"})
+    title_format = workbook.add_format({
+        "bold": True, "font_size": 16, "font_color": "#FFFFFF",
+        "bg_color": "#1F4E78", "align": "center", "valign": "vcenter",
+    })
+    subtitle_format = workbook.add_format({
+        "italic": True, "font_size": 10, "font_color": "#44546A",
+        "align": "center", "valign": "vcenter",
+    })
     header_format = workbook.add_format({
-        "border": 1,
-        "bold": True,
-        "bg_color": "#D9E1F2",
-        "valign": "vcenter",
-        "align": "center",
+        "border": 1, "bold": True, "bg_color": "#D9EAF7",
+        "font_color": "#17365D", "valign": "vcenter",
+        "align": "center", "text_wrap": True,
+    })
+    cell_format = workbook.add_format({
+        "border": 1, "valign": "vcenter",
+    })
+    total_format = workbook.add_format({
+        "border": 1, "bold": True, "bg_color": "#E2F0D9",
+        "top": 2, "valign": "vcenter",
+    })
+    money_format = workbook.add_format({
+        "border": 1, "valign": "vcenter", "num_format": '$#,##0.00',
+    })
+    total_money_format = workbook.add_format({
+        "border": 1, "bold": True, "bg_color": "#E2F0D9",
+        "top": 2, "valign": "vcenter", "num_format": '$#,##0.00',
     })
 
-    sheets_data = {
-        "Исходные данные": df_params_excel,
-        "Штат КПП": df_personnel_excel,
-        "Спецификация ТСПК": df_tspk_excel,
-    }
+    sheets_data = [
+        (
+            "Исходные данные", df_params_excel,
+            "ИСХОДНЫЕ ДАННЫЕ РАСЧЁТА",
+            f"Пункт пропуска: {input_data.get('app_name', '—')} | {input_data.get('capacity_category', '—')}",
+            None,
+        ),
+        (
+            "Штат КПП", df_personnel_excel,
+            "РАСЧЁТ ОРГАНИЗАЦИОННО-ШТАТНОЙ СТРУКТУРЫ",
+            f"Пункт пропуска: {input_data.get('app_name', '—')} | Смен: {input_data.get('shift_hours', '—')}",
+            personnel_total,
+        ),
+        (
+            "Спецификация ТСПК", df_tspk_excel,
+            "ВЕДОМОСТЬ ПОТРЕБНОСТИ В ТЕХНИЧЕСКИХ СРЕДСТВАХ",
+            f"Пункт пропуска: {input_data.get('app_name', '—')} | Стоимость указана в долларах США",
+            tspk_total,
+        ),
+    ]
 
-    for sheet_name, df in sheets_data.items():
+    for sheet_name, df, title, subtitle, total_row in sheets_data:
       worksheet = workbook.add_worksheet(sheet_name)
+      last_col = max(len(df.columns) - 1, 0)
+      worksheet.merge_range(0, 0, 0, last_col, title, title_format)
+      worksheet.merge_range(1, 0, 1, last_col, subtitle, subtitle_format)
+      worksheet.set_row(0, 30)
+      worksheet.set_row(1, 22)
+      header_row = 3
 
       for col_idx, col_name in enumerate(df.columns):
-        worksheet.write(0, col_idx, col_name, header_format)
+        worksheet.write(header_row, col_idx, col_name, header_format)
 
       for row_idx, row in df.iterrows():
         for col_idx, val in enumerate(row):
           if pd.isna(val):
             val = ""
-          worksheet.write(row_idx + 1, col_idx, val, border_format)
+          fmt = money_format if col_name == "Итого стоимость ($)" else cell_format
+          worksheet.write(header_row + row_idx + 1, col_idx, val, fmt)
+
+      if total_row is not None:
+        total_excel_row = header_row + len(df) + 1
+        for col_idx, col_name in enumerate(df.columns):
+          value = total_row.get(col_name, "")
+          fmt = total_money_format if col_name == "Итого стоимость ($)" else total_format
+          worksheet.write(total_excel_row, col_idx, value, fmt)
 
       for idx, col in enumerate(df.columns):
-        max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 3
-        worksheet.set_column(idx, idx, max(max_len, 12))
+        values = df[col].astype(str).tolist()
+        max_len = max([len(str(col))] + [len(value) for value in values] + [12])
+        worksheet.set_column(idx, idx, min(max(max_len + 3, 14), 48))
+
+      worksheet.freeze_panes(header_row + 1, 0)
+      if not df.empty:
+        worksheet.autofilter(header_row, 0, header_row + len(df), last_col)
+      worksheet.hide_gridlines(2)
 
   return output.getvalue()
 
