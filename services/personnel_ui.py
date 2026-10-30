@@ -79,7 +79,7 @@ def _render_advanced_editor() -> None:
                 "rule_params": st.column_config.TextColumn(
                     "Параметры правила (JSON)", width="large"
                 ),
-                "is_active": st.column_config.CheckboxColumn("Активна"),
+                "is_active": st.column_config.CheckboxColumn(\n                "Активна",\n                help="Если выключить, должность не будет учитываться в новых расчётах. Запись сохранится.",\n            ),
                 "is_system": st.column_config.CheckboxColumn(
                     "Системная", disabled=True
                 ),
@@ -242,6 +242,30 @@ def _render_simple_editor(personnel: list[dict]) -> None:
         for item in personnel
     ]
     table = pd.DataFrame(rows)
+    with st.expander("ℹ️ Что означают параметры и галочки?"):
+        st.markdown(
+            """
+            **Активна**
+            - Включена — должность учитывается при новых расчётах.
+            - Выключена — должность временно исключена из расчёта. Запись и её настройки сохраняются.
+
+            **Учитывать сменность**
+            - Включено — количество по нормативу умножается на коэффициент сменности. Такая должность учитывается в составе смены.
+            - Выключено — указывается общее количество должностей без умножения на сменность. В показатель «Состав смены» эта должность не входит.
+
+            **Количество** — базовое число сотрудников по нормативу. Итог зависит от выбранного принципа расчёта.
+
+            **Принцип расчёта**
+            - На пункт пропуска — указанное количество на весь КПП.
+            - На смену — указанное количество на одну смену.
+            - На полосу движения — на каждую полосу въезда и выезда.
+            - На кабину — на каждую кабину паспортного контроля.
+            - На направление — отдельно на въезд и выезд.
+            - На досмотровую группу / сотрудника досмотра — в зависимости от численности досмотрового состава.
+
+            **Важно:** после изменения параметров нажмите «Сохранить изменения». Изменения повлияют на новые расчёты, уже сохранённая история расчётов не переписывается.
+            """
+        )
     version = st.session_state.get("personnel_simple_version", 0)
     simple_options = [
         label for code, label in CALCULATION_LABELS.items() if code != "manual"
@@ -259,7 +283,7 @@ def _render_simple_editor(personnel: list[dict]) -> None:
                 "Принцип расчёта",
                 options=simple_options,
             ),
-            "apply_shift_factor": st.column_config.CheckboxColumn("Учитывать сменность"),
+            "apply_shift_factor": st.column_config.CheckboxColumn(\n                "Учитывать сменность",\n                help="Умножать норматив на коэффициент сменности и включать должность в состав смены.",\n            ),
             "is_active": st.column_config.CheckboxColumn("Активна"),
             "note": st.column_config.TextColumn("Примечание", width="large"),
         },
