@@ -14,11 +14,11 @@ datas = [
     *pandas_datas,
     *docx_datas,
     *xlsxwriter_datas,
-    copy_metadata("streamlit"),
-    copy_metadata("pandas"),
-    copy_metadata("python-docx"),
-    copy_metadata("python-dotenv"),
-    copy_metadata("XlsxWriter"),
+    *copy_metadata("streamlit"),
+    *copy_metadata("pandas"),
+    *copy_metadata("python-docx"),
+    *copy_metadata("python-dotenv"),
+    *copy_metadata("XlsxWriter"),
 ]
 
 binaries = [
