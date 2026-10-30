@@ -319,6 +319,10 @@ elif app_mode == "⚙️ Справочник ТСПК":
                     st.error(f"Ошибка при сбросе: {e}")
 
     with tab_add:
+        added_item = st.session_state.pop("tspk_add_done", None)
+        if added_item:
+            st.success(f"Оборудование «{added_item}» успешно добавлено в справочник.")
+
         st.subheader("Добавление нового оборудования")
         with st.form("add_tspk_form", clear_on_submit=True):  # clear_on_submit=True автоматически очистит все поля формы после успешной отправки!
             new_cat = st.selectbox("Категория", [
@@ -363,8 +367,9 @@ elif app_mode == "⚙️ Справочник ТСПК":
                             """, (new_cat, new_name, new_model, new_norm_type, new_unit, new_price, new_note))
                             conn.commit()
                         
-                        # Всплывающее уведомление в углу экрана
-                        st.toast(f"Оборудование «{new_name}» успешно добавлено!", icon="✅")
+                        # Обновляем данные справочника и все вкладки
+                        st.session_state["tspk_add_done"] = new_name
+                        st.rerun()
                         
                     except Exception as e:
                         st.error(f"Ошибка при добавлении: {e}")
@@ -372,13 +377,21 @@ elif app_mode == "⚙️ Справочник ТСПК":
                     st.warning("Пожалуйста, заполните наименование оборудования.")
 
     with tab_delete:
+        deleted_item = st.session_state.pop("tspk_delete_done", None)
+        if deleted_item:
+            st.success(f"Позиция «{deleted_item}» успешно удалена.")
+
         st.subheader("Удаление позиции из справочника")
         st.warning("Будьте аккуратны: удаленная позиция пропадет из расчетов.")
         
         # Выпадающий список для выбора, что удалить
         tspk_items = {f"{row['id']} | {row['category']} — {row['equipment_name']} ({row['selected_model']})": row['id'] for row in tspk_data}
         
-        selected_item_label = st.selectbox("Выберите оборудование для удаления", options=list(tspk_items.keys()), key="delete_select")
+        selected_item_label = st.selectbox(
+            "Выберите оборудование для удаления",
+            options=list(tspk_items.keys()),
+            key=f"delete_select_{st.session_state.get('tspk_delete_version', 0)}",
+        )
         
         if st.button("🗑️ Удалить выбранную позицию", type="primary"):
             item_id_to_delete = tspk_items[selected_item_label]
@@ -386,11 +399,18 @@ elif app_mode == "⚙️ Справочник ТСПК":
                 # Объединяем спиннер и подключение к БД в один with (SIM117)
                 with st.spinner("Удаление позиции из базы..."), get_connection() as conn:
                     cursor = conn.cursor()
+                    cursor.execute("SELECT equipment_name FROM dict_tspk WHERE id = ?", (item_id_to_delete,))
+                    item_row = cursor.fetchone()
                     cursor.execute("DELETE FROM dict_tspk WHERE id = ?", (item_id_to_delete,))
                     conn.commit()
-                
-                # Всплывающее уведомление в углу экрана
-                st.toast("Позиция успешно удалена!", icon="🗑️")
+
+                st.session_state["tspk_delete_done"] = (
+                    item_row["equipment_name"] if item_row else selected_item_label
+                )
+                st.session_state["tspk_delete_version"] = (
+                    st.session_state.get("tspk_delete_version", 0) + 1
+                )
+                st.rerun()
             except Exception as e:
                 st.error(f"Ошибка при удалении: {e}")
 
