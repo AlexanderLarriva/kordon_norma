@@ -241,7 +241,7 @@ class DatabaseTests(unittest.TestCase):
         )
         self.assertEqual(saved["position_name"], "Специалист связи")
         self.assertEqual(saved["rule_params"], {"source": "manual"})
-        self.assertFalse(saved["is_system})
+        self.assertFalse(saved["is_system"])
 
     def test_save_dictionary_and_reset_to_defaults(self):
         defaults = db.get_tspk_dict()
