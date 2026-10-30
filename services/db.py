@@ -1,11 +1,40 @@
 """Модуль работы с базой данных SQLite для АС «Кордон – Норма»."""
 
 import json
+import os
+import shutil
 import sqlite3
+import sys
+from pathlib import Path
 
 import pandas as pd
 
-DB_PATH = "database.db"
+
+def get_db_path() -> Path:
+    """Возвращает безопасный путь к рабочей базе данных."""
+    if not getattr(sys, "frozen", False):
+        # При запуске из исходного кода база находится в корне проекта.
+        return Path(__file__).resolve().parent.parent / "database.db"
+
+    # В собранной версии база хранится в профиле пользователя Windows.
+    app_data = Path(
+        os.environ.get("LOCALAPPDATA")
+        or os.environ.get("APPDATA")
+        or Path.home()
+    )
+    data_dir = app_data / "SmenaT"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    db_path = data_dir / "database.db"
+
+    # Однократно переносим старую базу, если она лежит рядом с EXE.
+    legacy_path = Path(sys.executable).resolve().parent / "database.db"
+    if not db_path.exists() and legacy_path.is_file():
+        shutil.copy2(legacy_path, db_path)
+
+    return db_path
+
+
+DB_PATH = get_db_path()
 
 
 def get_connection():
