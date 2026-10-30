@@ -601,27 +601,29 @@ CAPACITY_PRESETS = {
 if "step" not in st.session_state:
   st.session_state.step = 1
 
+DEFAULT_CALC_DATA = {
+    "app_name": "",
+    "capacity_category": "Высокая III (20 000–25 000 лиц/сутки)",
+    "work_mode": "24/7 (Круглосуточно)",
+    "shift_hours": 3,
+    "cabins_in": 19,
+    "cabins_out": 19,
+    "lanes_auto_in": 3,
+    "lanes_auto_out": 3,
+    "lanes_truck_in": 2,
+    "lanes_truck_out": 2,
+    "lanes_bus_in": 1,
+    "lanes_bus_out": 1,
+    "has_idk": True,
+    "has_rpm": True,
+    "k9_service": "Приданные силы",
+    "is_mixed_lanes": False,
+    "lanes_mixed_in": 2,
+    "lanes_mixed_out": 2,
+}
+
 if "calc_data" not in st.session_state:
-  st.session_state.calc_data = {
-      "app_name": "Пункт пропуска 'Мамыр'",
-      "capacity_category": "Высокая III (20 000–25 000 лиц/сутки)",
-      "work_mode": "24/7 (Круглосуточно)",
-      "shift_hours": 3,
-      "cabins_in": 19,
-      "cabins_out": 19,
-      "lanes_auto_in": 3,
-      "lanes_auto_out": 3,
-      "lanes_truck_in": 2,
-      "lanes_truck_out": 2,
-      "lanes_bus_in": 1,
-      "lanes_bus_out": 1,
-      "has_idk": True,
-      "has_rpm": True,
-      "k9_service": "Приданные силы",
-      "is_mixed_lanes": False,
-      "lanes_mixed_in": 2,
-      "lanes_mixed_out": 2,
-  }
+  st.session_state.calc_data = DEFAULT_CALC_DATA.copy()
 
 
 def go_step(step_number: int):
@@ -643,6 +645,8 @@ if st.session_state.step == 1:
     app_name = st.text_input(
         "Наименование пункта пропуска",
         value=st.session_state.calc_data["app_name"],
+        placeholder="Например: Мамыр, Кызыл-Кия, Достук",
+        help="Введите название пункта пропуска. Оно будет указано в результатах и Excel-отчёте.",
     )
 
     capacity = st.selectbox(
@@ -676,19 +680,22 @@ if st.session_state.step == 1:
 
   st.markdown("---")
   if st.button("Далее: Инфраструктура ➡️", type="primary"):
-    preset = CAPACITY_PRESETS.get(
-        capacity, CAPACITY_PRESETS["Высокая III (20 000–25 000 лиц/сутки)"]
-    )
+    if not app_name.strip():
+        st.warning("Укажите наименование пункта пропуска.")
+    else:
+        preset = CAPACITY_PRESETS.get(
+            capacity, CAPACITY_PRESETS["Высокая III (20 000–25 000 лиц/сутки)"]
+        )
 
-    st.session_state.calc_data.update({
-        "app_name": app_name,
-        "capacity_category": capacity,
-        "work_mode": work_mode,
-        "shift_hours": shift_hours,
-        **preset,
-    })
-    go_step(2)
-    st.rerun()
+        st.session_state.calc_data.update({
+            "app_name": app_name.strip(),
+            "capacity_category": capacity,
+            "work_mode": work_mode,
+            "shift_hours": shift_hours,
+            **preset,
+        })
+        go_step(2)
+        st.rerun()
 
 # ==========================================
 # ШАГ 2: ИНФРАСТРУКТУРА И СПЕЦ-ОСНАЩЕНИЕ
@@ -975,7 +982,7 @@ elif st.session_state.step == 3:
   )
 
   st.markdown("---")
-  c1, c2, c3 = st.columns([1, 2, 4])
+  c1, c2, c3, c4 = st.columns([1.2, 1.2, 2, 2])
 
   with c1:
     if st.button("⬅️ Изменить параметры"):
@@ -983,20 +990,25 @@ elif st.session_state.step == 3:
       st.rerun()
 
   with c2:
+    if st.button("🆕 Новый расчёт", type="primary"):
+      st.session_state.calc_data = DEFAULT_CALC_DATA.copy()
+      st.session_state.step = 1
+      st.rerun()
+
+  with c3:
     processed_data = generate_excel_report(data)
 
     st.download_button(
-        label="📥 Скачать отчет (Excel)",
+        label="📥 Скачать отчёт (Excel)",
         data=processed_data,
         file_name=f"Смена_Т_{data['app_name']}.xlsx",
         mime=(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ),
-        type="primary",
         key="download_excel_report",
     )
 
-  with c3:
+  with c4:
     if st.button("💾 Сохранить в историю"):
       combined_results = {
           "personnel": res_personnel,
