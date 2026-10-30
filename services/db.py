@@ -26,10 +26,16 @@ def get_db_path() -> Path:
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "database.db"
 
-    # Однократно переносим старую базу, если она лежит рядом с EXE.
-    legacy_path = Path(sys.executable).resolve().parent / "database.db"
-    if not db_path.exists() and legacy_path.is_file():
-        shutil.copy2(legacy_path, db_path)
+    # Однократно переносим старую базу из известных прежних расположений.
+    if not db_path.exists():
+        legacy_paths = [
+            Path(sys.executable).resolve().parent / "database.db",
+            Path.cwd() / "database.db",
+        ]
+        for legacy_path in legacy_paths:
+            if legacy_path.is_file() and legacy_path.resolve() != db_path.resolve():
+                shutil.copy2(legacy_path, db_path)
+                break
 
     return db_path
 
