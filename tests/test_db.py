@@ -110,6 +110,9 @@ class DatabaseTests(unittest.TestCase):
         by_code = {item["role_code"]: item for item in personnel}
         self.assertEqual(by_code["tspk_engineer"]["quantity"], 2)
         self.assertEqual(by_code["tspk_engineer"]["calculation_type"], "per_checkpoint")
+        self.assertEqual(by_code["tspk_engineer"]["functional_group"], "technical_maintenance")
+        self.assertEqual(by_code["document_control_in"]["functional_group"], "passport_control")
+        self.assertEqual(by_code["vehicle_inspection_senior"]["functional_group"], "vehicle_inspection")
         self.assertEqual(by_code["tspk_senior_technician"]["quantity"], 2)
         self.assertEqual(by_code["vehicle_inspection_junior"]["quantity"], 2)
         self.assertFalse(by_code["canine_inspector"]["is_active"])
@@ -133,6 +136,7 @@ class DatabaseTests(unittest.TestCase):
             if item["role_code"] == "tspk_engineer"
         )
         self.assertEqual(saved["position_name"], "Инженер ТСПК (изменено)")
+        self.assertEqual(saved["functional_group"], "technical_maintenance")
 
     def test_personnel_dictionary_can_be_reset_without_changing_other_data(self):
         personnel = db.get_personnel_dict()
@@ -148,6 +152,42 @@ class DatabaseTests(unittest.TestCase):
         self.assertGreater(len(restored), 0)
         self.assertEqual(db.get_tspk_dict(), tspk_before)
         self.assertEqual(db.get_calculation_history()[0]["id"], calculation_id)
+
+
+    def test_personnel_functional_group_migrates_existing_database(self):
+        with db.get_connection() as conn:
+            conn.execute("DROP TABLE dict_personnel")
+            conn.execute("""
+                CREATE TABLE dict_personnel (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    category TEXT NOT NULL,
+                    position_name TEXT NOT NULL,
+                    role_code TEXT NOT NULL UNIQUE,
+                    calculation_type TEXT NOT NULL,
+                    quantity REAL NOT NULL DEFAULT 1,
+                    apply_shift_factor INTEGER NOT NULL DEFAULT 0,
+                    condition_key TEXT,
+                    rule_params TEXT NOT NULL DEFAULT '{}',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    is_system INTEGER NOT NULL DEFAULT 1,
+                    note TEXT,
+                    sort_order INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            conn.execute("""
+                INSERT INTO dict_personnel
+                (category, position_name, role_code, calculation_type)
+                VALUES ('Техническая служба', 'Инженер', 'tspk_engineer', 'per_checkpoint')
+            """)
+
+        db.init_db()
+
+        engineer = next(
+            item for item in db.get_personnel_dict()
+            if item["role_code"] == "tspk_engineer"
+        )
+        self.assertEqual(engineer["functional_group"], "technical_maintenance")
+        self.assertEqual(engineer["position_name"], "Инженер")
 
     def test_personnel_dictionary_rejects_duplicate_role_codes(self):
         personnel = db.get_personnel_dict()
