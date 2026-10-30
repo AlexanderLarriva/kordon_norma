@@ -38,7 +38,7 @@ def generate_excel_report(input_data: dict) -> bytes:
   df_personnel = pd.DataFrame(all_personnel)
   df_tspk = pd.DataFrame(res_tspk)
   df_params_excel = pd.DataFrame([
-      {"Параметр": "Наименование пункта пропуска", "Значение": input_data.get("app_name", "—")},
+      {"Параметр": "Автомобильный пункт пропуска", "Значение": input_data.get("app_name", "—")},
       {"Параметр": "Пропускная способность", "Значение": input_data.get("capacity_category", "—")},
       {"Параметр": "Режим работы", "Значение": input_data.get("work_mode", "—")},
       {"Параметр": "Количество смен", "Значение": input_data.get("shift_hours", "—")},
@@ -130,19 +130,19 @@ def generate_excel_report(input_data: dict) -> bytes:
         (
             "Исходные данные", df_params_excel,
             "ИСХОДНЫЕ ДАННЫЕ РАСЧЁТА",
-            f"Пункт пропуска: {input_data.get('app_name', '—')} | {input_data.get('capacity_category', '—')}",
+            f"Автомобильный пункт пропуска: {input_data.get('app_name', '—')} | {input_data.get('capacity_category', '—')}",
             None,
         ),
         (
             "Штат КПП", df_personnel_excel,
             "РАСЧЁТ ОРГАНИЗАЦИОННО-ШТАТНОЙ СТРУКТУРЫ",
-            f"Пункт пропуска: {input_data.get('app_name', '—')} | Смен: {input_data.get('shift_hours', '—')}",
+            f"Автомобильный пункт пропуска: {input_data.get('app_name', '—')} | Смен: {input_data.get('shift_hours', '—')}",
             personnel_total,
         ),
         (
             "Спецификация ТСПК", df_tspk_excel,
             "ВЕДОМОСТЬ ПОТРЕБНОСТИ В ТЕХНИЧЕСКИХ СРЕДСТВАХ",
-            f"Пункт пропуска: {input_data.get('app_name', '—')} | Стоимость указана в долларах США",
+            f"Автомобильный пункт пропуска: {input_data.get('app_name', '—')} | Стоимость указана в долларах США",
             tspk_total,
         ),
     ]
@@ -251,7 +251,7 @@ if app_mode == "📜 История расчетов":
           st.markdown("#### 📋 Параметры расчета:")
           col1, col2 = st.columns(2)
           with col1:
-            st.write(f"- **Наименование:** {input_data.get('app_name', '—')}")
+            st.write(f"- **Автомобильный пункт пропуска:** {input_data.get('app_name', '—')}")
             st.write(
                 f"- **Пропускная способность:**"
                 f" {input_data.get('capacity_category', '—')}"
@@ -630,7 +630,20 @@ def go_step(step_number: int):
   st.session_state.step = step_number
 
 
+def start_new_calculation():
+  # Сбрасываем параметры и состояние виджетов, не затрагивая сохранённую историю и справочники.
+  st.session_state.clear()
+  st.rerun()
+
+
 st.caption(f"Шаг {st.session_state.step} из 3")
+top_new_col, _ = st.columns([1, 5])
+with top_new_col:
+  st.button(
+      "🆕 Новый расчёт",
+      key=f"new_calculation_top_step_{st.session_state.step}",
+      on_click=start_new_calculation,
+  )
 st.progress(st.session_state.step / 3)
 
 # ==========================================
@@ -907,7 +920,7 @@ elif st.session_state.step == 3:
   res_personnel = calculate_personnel(data)
   res_tspk = calculate_tspk(data, res_personnel)
 
-  st.subheader(f"📌 {data['app_name']} ({data['capacity_category']})")
+  st.subheader(f"🚗 Автомобильный пункт пропуска «{data['app_name']}» ({data['capacity_category']})")
   st.caption(
       f"Режим работы: {data.get('work_mode', '—')} | "
       f"Количество смен: {data.get('shift_hours', '—')}"
@@ -982,17 +995,11 @@ elif st.session_state.step == 3:
   )
 
   st.markdown("---")
-  c1, c2, c3, c4 = st.columns([1.2, 1.2, 2, 2])
+  c1, c3, c4 = st.columns([1.2, 2, 2])
 
   with c1:
     if st.button("⬅️ Изменить параметры"):
       go_step(2)
-      st.rerun()
-
-  with c2:
-    if st.button("🆕 Новый расчёт", type="primary"):
-      st.session_state.calc_data = DEFAULT_CALC_DATA.copy()
-      st.session_state.step = 1
       st.rerun()
 
   with c3:
