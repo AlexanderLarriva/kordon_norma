@@ -271,6 +271,9 @@ elif app_mode == "⚙️ Справочник ТСПК":
     tab_edit, tab_add, tab_delete = st.tabs(["📋 Таблица и цены", "➕ Добавить позицию", "🗑️ Удалить позицию"])
 
     with tab_edit:
+        if st.session_state.pop("tspk_reset_done", False):
+            st.success("Справочник сброшен к исходным значениям.")
+
         st.subheader("Редактирование цен и моделей")
         st.info("Измените нужные ячейки в таблице и нажмите кнопку сохранения внизу.")
 
@@ -290,7 +293,7 @@ elif app_mode == "⚙️ Справочник ТСПК":
             disabled=["id", "category", "equipment_name", "unit"],
             num_rows="fixed",  # Фиксируем строки, чтобы не ломать таблицу случайно
             width='content',
-            key="tspk_editor",
+            key=f"tspk_editor_{st.session_state.get('tspk_editor_version', 0)}",
         )
 
         col_save, col_reset = st.columns(2)
@@ -307,7 +310,10 @@ elif app_mode == "⚙️ Справочник ТСПК":
             if st.button("🔄 Сбросить к исходным значениям"):
                 try:
                     reset_tspk_to_default()
-                    st.success("Справочник сброшен к заводским настройкам!")
+                    st.session_state["tspk_editor_version"] = (
+                        st.session_state.get("tspk_editor_version", 0) + 1
+                    )
+                    st.session_state["tspk_reset_done"] = True
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ошибка при сбросе: {e}")
