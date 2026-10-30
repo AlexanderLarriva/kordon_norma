@@ -42,6 +42,31 @@ def get_db_path() -> Path:
 
 DB_PATH = get_db_path()
 
+# Стандартный шаблон должностей. role_code — стабильный ключ для расчётной логики
+# и связей с ТСПК; position_name можно менять без изменения программного кода.
+DEFAULT_PERSONNEL = [
+    ("Руководство КПП", "Начальник КПП", "checkpoint_chief", "per_checkpoint", 1, 0, None, {}, 1, "Начальник пункта пропуска."),
+    ("Руководство КПП", "Заместитель начальника КПП", "deputy_general", "per_checkpoint", 1, 0, "deputies.deputy_general", {}, 1, "Включается по настройке."),
+    ("Руководство КПП", "Заместитель по воспитательной работе", "deputy_education", "per_checkpoint", 1, 0, "deputies.deputy_political", {}, 0, "Включается по настройке."),
+    ("Руководство КПП", "Заместитель по ТСПК", "deputy_tspk", "per_checkpoint", 1, 0, "deputies.deputy_tspk", {}, 1, "Включается по настройке."),
+    ("Руководство КПП", "Заместитель по оперативной деятельности", "deputy_operations", "per_checkpoint", 1, 0, "deputies.deputy_operational", {}, 1, "Включается по настройке."),
+    ("Управление и техническая служба", "Старший смены (ССПН)", "shift_supervisor", "per_shift", 1, 1, None, {}, 1, "Один человек в каждой смене."),
+    ("Управление и техническая служба", "Дежурный по КПП", "checkpoint_duty_officer", "per_shift", 1, 1, None, {}, 1, "Один человек в каждой смене."),
+    ("Управление и техническая служба", "Инженер по ТСПК", "tspk_engineer", "per_checkpoint", 2, 0, None, {}, 1, "Два человека на весь пункт пропуска."),
+    ("Управление и техническая служба", "Старший техник ТСПК", "tspk_senior_technician", "per_shift", 2, 1, None, {}, 1, "Два человека в каждой смене."),
+    ("Управление и техническая служба", "Оператор комплексных систем безопасности", "security_systems_operator", "per_shift", 1, 1, None, {}, 0, "Дополнительная должность; по умолчанию отключена."),
+    ("Паспортный контроль", "Проверка документов (ПД), въезд", "document_control_in", "per_cabin", 1, 1, None, {"direction": "in"}, 1, "Один контролер на кабину въезда в каждой смене."),
+    ("Паспортный контроль", "Проверка документов (ПД), выезд", "document_control_out", "per_cabin", 1, 1, None, {"direction": "out"}, 1, "Один контролер на кабину выезда в каждой смене."),
+    ("Режимная служба и досмотр", "Часовой у шлагбаума", "barrier_guard", "per_checkpoint", 2, 0, None, {"allocation": "manual_by_direction"}, 1, "Два человека на КПП; распределение по направлениям настраивается."),
+    ("Режимная служба и досмотр", "Старший по осмотру транспортных средств", "vehicle_inspection_senior", "per_lane", 1, 1, None, {"lane_scope": "all"}, 1, "Один на каждую учитываемую полосу в каждой смене."),
+    ("Режимная служба и досмотр", "Младший пограничный наряд", "vehicle_inspection_junior", "per_lane", 2, 1, None, {"lane_scope": "all"}, 1, "Два на каждую учитываемую полосу в каждой смене."),
+    ("Специализированные наряды", "Инспектор-кинолог", "canine_inspector", "per_shift", 1, 1, "k9_staff_enabled", {}, 0, "Штатная должность; по умолчанию отключена."),
+    ("Специализированные наряды", "Оператор РПМ", "rpm_operator", "per_direction", 1, 1, "has_rpm", {"directions": ["in", "out"]}, 1, "По одному на въезд и выезд в каждой смене при наличии РПМ."),
+    ("Специализированные наряды", "Оператор ИДК", "idk_operator", "per_shift", 1, 1, "has_idk", {}, 1, "Один в каждой смене при наличии ИДК."),
+    ("Специализированные наряды", "Инспектор ИДК", "idk_inspector", "per_shift", 2, 1, "has_idk", {}, 1, "Два в каждой смене при наличии ИДК."),
+]
+
+
 
 def get_connection():
     """Создает подключение к базе данных SQLite."""
@@ -69,6 +94,40 @@ def init_db():
                 note TEXT
             )
         """)
+
+
+        # Гибкий справочник должностей и нормативов персонала
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dict_personnel (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                category TEXT NOT NULL,
+                position_name TEXT NOT NULL,
+                role_code TEXT NOT NULL UNIQUE,
+                calculation_type TEXT NOT NULL,
+                quantity REAL NOT NULL DEFAULT 1,
+                apply_shift_factor INTEGER NOT NULL DEFAULT 0,
+                condition_key TEXT,
+                rule_params TEXT NOT NULL DEFAULT '{}',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                is_system INTEGER NOT NULL DEFAULT 1,
+                note TEXT,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+
+        cursor.execute("SELECT COUNT(*) FROM dict_personnel")
+        if cursor.fetchone()[0] == 0:
+            cursor.executemany(
+                """INSERT INTO dict_personnel
+                (category, position_name, role_code, calculation_type, quantity,
+                 apply_shift_factor, condition_key, rule_params, is_active,
+                 is_system, note, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)""",
+                [
+                    (*item[:8], item[8], item[9], index)
+                    for index, item in enumerate(DEFAULT_PERSONNEL)
+                ],
+            )
 
         # Таблица системных настроек и коэффициентов
         cursor.execute("""
@@ -366,6 +425,93 @@ def init_db():
             )
 
         conn.commit()
+
+
+
+def get_personnel_dict(include_inactive: bool = True) -> list[dict]:
+    """Возвращает справочник персонала; rule_params преобразуется из JSON в dict."""
+    query = "SELECT * FROM dict_personnel"
+    if not include_inactive:
+        query += " WHERE is_active = 1"
+    query += " ORDER BY sort_order, id"
+
+    with get_connection() as conn:
+        rows = conn.execute(query).fetchall()
+
+    personnel = []
+    for row in rows:
+        item = dict(row)
+        item["rule_params"] = json.loads(item["rule_params"] or "{}")
+        item["apply_shift_factor"] = bool(item["apply_shift_factor"])
+        item["is_active"] = bool(item["is_active"])
+        item["is_system"] = bool(item["is_system"])
+        personnel.append(item)
+    return personnel
+
+
+def save_personnel_dict(updated_items) -> None:
+    """Сохраняет справочник персонала из списка словарей или pandas DataFrame."""
+    records = updated_items.to_dict("records") if hasattr(updated_items, "to_dict") else list(updated_items)
+    required = {
+        "category", "position_name", "role_code", "calculation_type",
+        "quantity", "apply_shift_factor", "condition_key", "rule_params",
+        "is_active", "is_system", "note", "sort_order",
+    }
+    prepared = []
+    seen_codes = set()
+
+    for item in records:
+        missing = required - item.keys()
+        if missing:
+            raise ValueError(f"В записи персонала отсутствуют поля: {', '.join(sorted(missing))}")
+
+        role_code = str(item["role_code"]).strip()
+        if not role_code:
+            raise ValueError("Код функциональной роли не может быть пустым.")
+        if role_code in seen_codes:
+            raise ValueError(f"Код функциональной роли повторяется: {role_code}")
+        seen_codes.add(role_code)
+
+        rule_params = item["rule_params"]
+        if isinstance(rule_params, str):
+            rule_params = json.loads(rule_params or "{}")
+        if not isinstance(rule_params, dict):
+            raise ValueError(f"Параметры правила для роли {role_code} должны быть объектом JSON.")
+
+        prepared.append((
+            int(item["id"]) if item.get("id") is not None and str(item.get("id")) not in ("", "nan") else None,
+            str(item["category"]).strip(),
+            str(item["position_name"]).strip(),
+            role_code,
+            str(item["calculation_type"]).strip(),
+            float(item["quantity"]),
+            int(bool(item["apply_shift_factor"])),
+            str(item["condition_key"]).strip() or None if item["condition_key"] is not None else None,
+            json.dumps(rule_params, ensure_ascii=False),
+            int(bool(item["is_active"])),
+            int(bool(item["is_system"])),
+            str(item["note"] or ""),
+            int(item["sort_order"]),
+        ))
+
+    with get_connection() as conn:
+        conn.execute("DELETE FROM dict_personnel")
+        conn.executemany(
+            """INSERT INTO dict_personnel
+            (id, category, position_name, role_code, calculation_type, quantity,
+             apply_shift_factor, condition_key, rule_params, is_active, is_system,
+             note, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            prepared,
+        )
+
+
+def reset_personnel_to_default() -> None:
+    """Сбрасывает справочник персонала к стандартному шаблону."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM dict_personnel")
+        conn.execute("DELETE FROM sqlite_sequence WHERE name = 'dict_personnel'")
+    init_db()
 
 
 def get_settings() -> dict:
