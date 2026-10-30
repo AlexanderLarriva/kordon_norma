@@ -171,7 +171,7 @@ if app_mode == "📜 История расчетов":
           with col2:
             st.write(f"- **Режим работы:** {input_data.get('work_mode', '—')}")
             st.write(
-                f"- **Смена:** {input_data.get('shift_hours', '—')} часов"
+                f"- **Количество смен:** {input_data.get('shift_hours', '—')}"
             )
 
         # Человекопонятное отображение деталей вместо сырого JSON
