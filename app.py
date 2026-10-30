@@ -26,12 +26,15 @@ st.set_page_config(
     layout="wide",
 )
 
-# Сведения о разработчике — отображаются только в интерфейсе приложения.
-st.sidebar.markdown("---")
-st.sidebar.caption(
-    "**Разработано Оперативной пограничной группой ФСБ России "
-    "в Кыргызской Республике**"
-)
+def render_footer():
+    """Ненавязчивая отметка о разработчике внизу интерфейса."""
+    st.markdown(
+        '<div style="margin-top: 2.5rem; padding-top: 0.5rem; '
+        'text-align: center; color: #9A9A9A; font-size: 0.75rem;">'
+        '© 2026 Разработано Оперативной пограничной группой ФСБ России '
+        'в Кыргызской Республике</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def generate_excel_report(input_data: dict) -> bytes:
@@ -340,6 +343,7 @@ if app_mode == "📜 История расчетов":
             st.success(f"Расчет ID {item['id']} успешно удален!")
             st.rerun()
 
+  render_footer()
   st.stop()  # Останавливает отрисовку шагов калькулятора, когда открыта история
 
 # ==========================================
@@ -539,6 +543,7 @@ elif app_mode == "⚙️ Справочник ТСПК":
                 st.session_state["tspk_delete_confirm_id"] = item_id_to_delete
                 st.rerun()
 
+    render_footer()
     st.stop()
 
 # ==========================================
@@ -546,6 +551,7 @@ elif app_mode == "⚙️ Справочник ТСПК":
 # ==========================================
 elif app_mode == "👥 Справочник персонала":
     render_personnel_editor()
+    render_footer()
     st.stop()
 
 # ==========================================
@@ -1039,3 +1045,5 @@ elif st.session_state.step == 3:
       st.success(
           f"Расчет успешно сохранен в базе данных! (ID записи: {calc_id})"
       )
+
+render_footer()
