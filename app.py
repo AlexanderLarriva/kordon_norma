@@ -36,6 +36,12 @@ def generate_excel_report(input_data: dict) -> bytes:
   )
   df_personnel = pd.DataFrame(all_personnel)
   df_tspk = pd.DataFrame(res_tspk)
+  df_params_excel = pd.DataFrame([
+      {"Параметр": "Наименование пункта пропуска", "Значение": input_data.get("app_name", "—")},
+      {"Параметр": "Пропускная способность", "Значение": input_data.get("capacity_category", "—")},
+      {"Параметр": "Режим работы", "Значение": input_data.get("work_mode", "—")},
+      {"Параметр": "Количество смен", "Значение": input_data.get("shift_hours", "—")},
+  ])
 
   df_personnel_excel = df_personnel.rename(
       columns={
@@ -76,6 +82,7 @@ def generate_excel_report(input_data: dict) -> bytes:
     })
 
     sheets_data = {
+        "Исходные данные": df_params_excel,
         "Штат КПП": df_personnel_excel,
         "Спецификация ТСПК": df_tspk_excel,
     }
@@ -743,6 +750,10 @@ elif st.session_state.step == 3:
   res_tspk = calculate_tspk(data, res_personnel)
 
   st.subheader(f"📌 {data['app_name']} ({data['capacity_category']})")
+  st.caption(
+      f"Режим работы: {data.get('work_mode', '—')} | "
+      f"Количество смен: {data.get('shift_hours', '—')}"
+  )
 
   m1, m2, m3, m4 = st.columns(4)
   m1.metric("Состав смены", f"{res_personnel['shift_total']} чел.")
