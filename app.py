@@ -509,6 +509,9 @@ if st.session_state.step == 1:
     shift_hours = st.radio(
         "Количество смен",
         options=[2, 3, 4],
+        index=[2, 3, 4].index(
+            int(st.session_state.calc_data.get("shift_hours", 3))
+        ),
         format_func=lambda x: f"{x}",
         horizontal=True,
     )
