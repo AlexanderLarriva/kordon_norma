@@ -38,7 +38,7 @@ class DatabaseTests(unittest.TestCase):
             }
 
         self.assertTrue(
-            {"dict_tspk", "dict_settings", "calculation_history"}.issubset(tables)
+            {"dict_tspk", "dict_personnel", "dict_settings", "calculation_history"}.issubset(tables)
         )
         self.assertGreater(len(db.get_tspk_dict()), 0)
 
@@ -134,16 +134,20 @@ class DatabaseTests(unittest.TestCase):
         )
         self.assertEqual(saved["position_name"], "Инженер ТСПК (изменено)")
 
-    def test_personnel_dictionary_can_be_reset_to_defaults(self):
+    def test_personnel_dictionary_can_be_reset_without_changing_other_data(self):
         personnel = db.get_personnel_dict()
         personnel[0]["position_name"] = "Временное название"
         db.save_personnel_dict(personnel)
+        tspk_before = db.get_tspk_dict()
+        calculation_id = db.save_calculation("Тест", "T-1", "Тест", {}, {"value": 7})
 
         db.reset_personnel_to_default()
 
         restored = db.get_personnel_dict()
         self.assertEqual(restored[0]["position_name"], "Начальник КПП")
         self.assertGreater(len(restored), 0)
+        self.assertEqual(db.get_tspk_dict(), tspk_before)
+        self.assertEqual(db.get_calculation_history()[0]["id"], calculation_id)
 
     def test_personnel_dictionary_rejects_duplicate_role_codes(self):
         personnel = db.get_personnel_dict()
