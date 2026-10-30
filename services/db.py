@@ -124,7 +124,13 @@ def init_db():
                  is_system, note, sort_order)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
                 [
-                    (*item[:8], item[8], item[9], index)
+                    (
+                        *item[:7],
+                        json.dumps(item[7], ensure_ascii=False),
+                        item[8],
+                        item[9],
+                        index,
+                    )
                     for index, item in enumerate(DEFAULT_PERSONNEL)
                 ],
             )
