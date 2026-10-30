@@ -120,8 +120,8 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
     is_mixed_lanes = data.get("is_mixed_lanes", True)
 
     if is_mixed_lanes:
-        lanes_in = int(data.get("lanes_in", 1))
-        lanes_out = int(data.get("lanes_out", 1))
+        lanes_in = int(data.get("lanes_mixed_in", 1))
+        lanes_out = int(data.get("lanes_mixed_out", 1))
     else:
         # Суммируем полосы по всем типам транспорта (легковые, грузовые, автобусы)
         lanes_in = (
