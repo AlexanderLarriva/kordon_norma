@@ -2,6 +2,7 @@
 
 import json
 import re
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -25,7 +26,7 @@ CALCULATION_TYPES = [
 ]
 
 
-def render_personnel_editor() -> None:
+def _render_advanced_editor() -> None:
     """Отображает редактор должностей, нормативов и пользовательских ролей."""
     st.header("👥 Управление справочником персонала")
     st.caption(
@@ -210,3 +211,158 @@ def render_personnel_editor() -> None:
         elif st.button("🔄 Сбросить к стандартному шаблону"):
             st.session_state["personnel_reset_confirm"] = True
             st.rerun()
+
+
+
+CALCULATION_LABELS = {
+    "per_checkpoint": "На пункт пропуска",
+    "per_shift": "На смену",
+    "per_lane": "На полосу движения",
+    "per_cabin": "На кабину",
+    "per_direction": "На направление (въезд / выезд)",
+    "per_inspection_group": "На досмотровую группу",
+    "per_inspection_personnel": "На сотрудника досмотра",
+    "manual": "Ручной ввод",
+}
+
+
+def _render_simple_editor(personnel: list[dict]) -> None:
+    """Показывает только понятные пользователю поля, сохраняя скрытые настройки."""
+    rows = [
+        {
+            "role_code": item["role_code"],
+            "category": item["category"],
+            "position_name": item["position_name"],
+            "quantity": item["quantity"],
+            "calculation_type": item["calculation_type"],
+            "apply_shift_factor": item["apply_shift_factor"],
+            "is_active": item["is_active"],
+            "note": item["note"],
+        }
+        for item in personnel
+    ]
+    table = pd.DataFrame(rows)
+    version = st.session_state.get("personnel_simple_version", 0)
+    edited = st.data_editor(
+        table,
+        column_config={
+            "role_code": None,
+            "category": st.column_config.TextColumn("Категория"),
+            "position_name": st.column_config.TextColumn("Должность", width="large"),
+            "quantity": st.column_config.NumberColumn("Количество", min_value=0.0, step=1.0),
+            "calculation_type": st.column_config.SelectboxColumn(
+                "Принцип расчёта",
+                options=list(CALCULATION_LABELS),
+                format_func=lambda value: CALCULATION_LABELS.get(value, value),
+            ),
+            "apply_shift_factor": st.column_config.CheckboxColumn("Учитывать сменность"),
+            "is_active": st.column_config.CheckboxColumn("Активна"),
+            "note": st.column_config.TextColumn("Примечание", width="large"),
+        },
+        disabled=["role_code"],
+        num_rows="fixed",
+        width="stretch",
+        key=f"personnel_simple_{version}",
+    )
+    left, right = st.columns(2)
+    with left:
+        if st.button("Сохранить изменения", type="primary", key="save_simple_personnel"):
+            try:
+                by_code = {item["role_code"]: dict(item) for item in personnel}
+                for _, row in edited.iterrows():
+                    item = by_code[row["role_code"]]
+                    for field in (
+                        "category", "position_name", "quantity",
+                        "calculation_type", "apply_shift_factor", "is_active", "note",
+                    ):
+                        item[field] = row[field]
+                save_personnel_dict(list(by_code.values()))
+                st.session_state["personnel_simple_version"] = version + 1
+                st.success("Справочник сохранён.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Не удалось сохранить справочник: {exc}")
+    with right:
+        if st.button("Отменить изменения", key="cancel_simple_personnel"):
+            st.session_state["personnel_simple_version"] = version + 1
+            st.rerun()
+
+
+def _render_simple_add(personnel: list[dict]) -> None:
+    st.subheader("Добавить должность")
+    st.caption(
+        "Новая должность будет учитываться в штатном расчёте по выбранному принципу. "
+        "По умолчанию она относится к прочему персоналу и не меняет расчёт ТСПК."
+    )
+    with st.form("add_simple_personnel_form", clear_on_submit=True):
+        category = st.text_input("Категория", value="Дополнительный персонал")
+        position = st.text_input("Наименование должности")
+        col1, col2 = st.columns(2)
+        with col1:
+            quantity = st.number_input("Количество", min_value=0.0, value=1.0, step=1.0)
+        with col2:
+            calculation_type = st.selectbox(
+                "Принцип расчёта",
+                options=list(CALCULATION_LABELS),
+                format_func=lambda value: CALCULATION_LABELS[value],
+            )
+        apply_shift = st.checkbox("Учитывать количество смен", value=True)
+        note = st.text_input("Примечание")
+        submitted = st.form_submit_button("Добавить должность")
+    if submitted:
+        if not category.strip() or not position.strip():
+            st.warning("Укажите категорию и наименование должности.")
+            return
+        new_item = {
+            "id": None,
+            "category": category.strip(),
+            "position_name": position.strip(),
+            "role_code": f"custom_{uuid.uuid4().hex[:12]}",
+            "functional_group": "other",
+            "calculation_type": calculation_type,
+            "quantity": quantity,
+            "apply_shift_factor": apply_shift,
+            "condition_key": None,
+            "rule_params": {},
+            "is_active": True,
+            "is_system": False,
+            "note": note.strip(),
+            "sort_order": max((int(item["sort_order"]) for item in personnel), default=0) + 1,
+        }
+        try:
+            save_personnel_dict(personnel + [new_item])
+            st.session_state["personnel_simple_version"] = (
+                st.session_state.get("personnel_simple_version", 0) + 1
+            )
+            st.success(f"Должность «{position}» добавлена.")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Не удалось добавить должность: {exc}")
+
+
+def render_personnel_editor() -> None:
+    """Основной интерфейс справочника: простой режим и технические настройки."""
+    st.header("👥 Справочник персонала")
+    st.caption(
+        "В обычном режиме доступны основные параметры должностей. "
+        "Технические настройки можно открыть отдельно."
+    )
+    mode = st.radio(
+        "Режим настройки",
+        ["Обычный", "Расширенный"],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="personnel_editor_mode",
+    )
+    if mode == "Обычный":
+        personnel = get_personnel_dict(include_inactive=True)
+        st.subheader("Должности и нормативы")
+        st.caption(
+            "Меняйте наименование, количество и принцип расчёта. "
+            "Внутренние параметры должностей сохраняются автоматически."
+        )
+        _render_simple_editor(personnel)
+        st.divider()
+        _render_simple_add(personnel)
+    else:
+        _render_advanced_editor()
