@@ -163,7 +163,7 @@ def generate_excel_report(input_data: dict) -> bytes:
         for col_idx, val in enumerate(row):
           if pd.isna(val):
             val = ""
-          fmt = money_format if col_name == "Итого стоимость ($)" else cell_format
+          fmt = money_format if df.columns[col_idx] == "Итого стоимость ($)" else cell_format
           worksheet.write(header_row + row_idx + 1, col_idx, val, fmt)
 
       if total_row is not None:
