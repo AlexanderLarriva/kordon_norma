@@ -5,99 +5,166 @@ import math
 from services.db import get_connection, get_settings
 
 
+def _get_multiplier(data: dict, rule_params: dict) -> int:
+    """Возвращает множитель для конкретного типа норматива."""
+    calculation_type = rule_params.get("_calculation_type")
+    if calculation_type == "per_checkpoint":
+        return 1
+    if calculation_type == "per_shift":
+        return 1
+    if calculation_type == "per_lane":
+        if rule_params.get("lane_scope", "all") == "all":
+            return int(data.get("_lanes_total", 0))
+        return int(data.get("_lanes_total", 0))
+    if calculation_type == "per_cabin":
+        direction = rule_params.get("direction")
+        if direction == "in":
+            return int(data.get("cabins_in", 0))
+        if direction == "out":
+            return int(data.get("cabins_out", 0))
+        return int(data.get("cabins_in", 0)) + int(data.get("cabins_out", 0))
+    if calculation_type == "per_direction":
+        directions = rule_params.get("directions", ["in", "out"])
+        return sum(
+            1 for direction in directions
+            if (direction == "in" and data.get("has_rpm"))
+            or (direction == "out" and data.get("has_rpm"))
+        )
+    if calculation_type in ("per_inspection_group", "per_inspection_personnel"):
+        return int(data.get("_inspection_personnel_count", 0))
+    if calculation_type == "manual":
+        return 0
+    # Незнакомый тип не должен незаметно создавать штат.
+    raise ValueError(f"Неизвестный тип расчета персонала: {calculation_type}")
+
+
+def _condition_is_met(condition_key, data: dict) -> bool:
+    if not condition_key:
+        return True
+    if condition_key.startswith("deputies."):
+        return bool(data.get("deputies", {}).get(condition_key.split(".", 1)[1], False))
+    if condition_key == "has_idk":
+        return bool(data.get("has_idk"))
+    if condition_key == "has_rpm":
+        return bool(data.get("has_rpm"))
+    if condition_key == "k9_staff_enabled":
+        return data.get("k9_service", "В штате КПП") == "В штате КПП"
+    # Неизвестное условие трактуем безопасно: должность не включаем.
+    return False
+
+
+def _lane_counts(data: dict) -> tuple[int, int]:
+    """Число полос въезда/выезда с учетом обоих режимов ввода."""
+    if data.get("is_mixed_lanes", True):
+        return (
+            max(0, int(data.get("lanes_mixed_in", 1))),
+            max(0, int(data.get("lanes_mixed_out", 1))),
+        )
+    lanes_in = sum(
+        int(data.get(key, 0))
+        for key in ("lanes_auto_in", "lanes_truck_in", "lanes_bus_in")
+    )
+    lanes_out = sum(
+        int(data.get(key, 0))
+        for key in ("lanes_auto_out", "lanes_truck_out", "lanes_bus_out")
+    )
+    return lanes_in, lanes_out
+
+
 def calculate_personnel(data: dict) -> dict:
-    """Расчет оргштатной структуры и сменного состава."""
-    cabins_in = data.get("cabins_in", 0)
-    cabins_out = data.get("cabins_out", 0)
-    shift_hours = data.get("shift_hours", 12)
-    # category = data.get("capacity_category", "")
-
-    # Загружаем коэффициенты сменности
+    """Рассчитывает штат на основе настраиваемого справочника должностей."""
+    personnel_items = get_personnel_dict(include_inactive=False)
+    shift_count = int(data.get("shift_hours", 3))
     settings = get_settings()
-    if shift_hours == 2:
-        k_shift = float(settings.get("k_shift_12h", 2.0))
-    elif shift_hours == 3:
-        k_shift = float(settings.get("k_shift_8h", 3.0))
-    else:
-        k_shift = float(settings.get("k_shift_24h", 4.0))
+    shift_setting = {
+        2: "k_shift_12h",
+        3: "k_shift_8h",
+        4: "k_shift_24h",
+    }
+    if shift_count not in shift_setting:
+        raise ValueError("Количество смен должно быть 2, 3 или 4.")
+    shift_factor = float(settings.get(shift_setting[shift_count], shift_count))
 
-    # 1. Руководство (постоянный и перспективный штат)
-    # 1. Руководство КПП (формируется на основе выбранных в UI чекбоксов)
-    management_rows = [
-        {"category": "Руководство КПП", "position": "Начальник КПП", "in_shift": "-", "total": 1, "note": "Постоянный штат"},
-    ]
+    lanes_in, lanes_out = _lane_counts(data)
+    calc_data = {
+        **data,
+        "_lanes_total": lanes_in + lanes_out,
+    }
 
-    # Извлекаем состояние чекбоксов руководства
-    deputies = data.get("deputies", {})
+    # Сначала определяем численность досмотрового состава для зависимых нормативов.
+    inspection_per_shift = sum(
+        float(item["quantity"])
+        * (lanes_in + lanes_out if item["calculation_type"] == "per_lane" else 1)
+        for item in personnel_items
+        if item["functional_group"] == "vehicle_inspection"
+        and _condition_is_met(item["condition_key"], data)
+    )
+    calc_data["_inspection_personnel_count"] = math.ceil(inspection_per_shift)
 
-    if deputies.get("deputy_general", True):
-        management_rows.append({"category": "Руководство КПП", "position": "Заместитель начальника КПП", "in_shift": "-", "total": 1, "note": "Штатная должность"})
-
-    if deputies.get("deputy_political", False):
-        management_rows.append({"category": "Руководство КПП", "position": "Заместитель по воспитательной работе", "in_shift": "-", "total": 1, "note": "Штатная должность"})
-
-    if deputies.get("deputy_tspk", False):
-        management_rows.append({"category": "Руководство КПП", "position": "Заместитель по ТСПК", "in_shift": "-", "total": 1, "note": "Штатная должность"})
-
-    if deputies.get("deputy_operational", False):
-        management_rows.append({"category": "Руководство КПП", "position": "Заместитель по оперативной деятельности", "in_shift": "-", "total": 1, "note": "Штатная должность"})
-
-    # 2. Состав смены (Инженер ТСПК/АСПК присутствует ВСЕГДА)
-    shift_positions = [
-        ("Управление смены", "Старший смены (ССПН)", 1, "Офицерский состав"),
-        ("Управление смены", "Дежурный по КПП (ДЖ)", 1, "Суточный наряд"),
-        ("Управление смены", "Инженер ТСПК/АСПК", 1, "Техническое обслуживание ТСПК и АСПК"),
-    ]
-
-    # Паспортный контроль
-    shift_positions.append(("Паспортный контроль", "Проверка документов (ПД) (Въезд)", cabins_in, f"По 1 чел. на {cabins_in} кабин"))
-    shift_positions.append(("Паспортный контроль", "Проверка документов (ПД) (Выезд)", cabins_out, f"По 1 чел. на {cabins_out} кабин"))
-
-    # Режим и досмотр
-    shift_positions.append(("Режимная служба", "Часовой у шлагбаума (ЧШ)", 2, "1 на въезд, 1 на выезд"))
-    shift_positions.append(("Досмотровый наряд", "Осмотр ТС (ОТС)", 2, "Досмотр легковых/грузовых ТС"))
-
-    # Кинологическое обеспечение
-    k9_mode = data.get("k9_service", "В штате КПП")
-    if k9_mode == "В штате КПП":
-        shift_positions.append(("Кинологическая служба", "Инспектор-кинолог", 1, "Поиск ВВ, оружия и НС"))
-    elif k9_mode == "Приданные силы":
-        # Если приданные силы, можно выводить сноску или учитывать без увеличения штатной численности КПП
-        pass
-
-    # Специальные комплексы
-    if data.get("has_rpm"):
-        shift_positions.append(("Спец. контроль", "Оператор РПМ (ОРПМ)", 2, "1 въезд, 1 выезд"))
-
-    if data.get("has_idk"):
-        shift_positions.append(("Спец. контроль", "Оператор ИДК", 1, "Прицепной / мобильный ИДК"))
-        shift_positions.append(("Спец. контроль", "Инспектор ИДК", 2, "Физический досмотр"))
-
-    # Итоговый расчет сменного состава
+    management_rows = []
     duty_rows = []
-    total_shift_people = 0
+    shift_total = 0
+    management_total = 0
+    duty_total = 0
+    functional_group_counts = {}
+    role_counts = {}
 
-    for cat, pos, count_in_shift, note in shift_positions:
-        total_staff_pos = math.ceil(count_in_shift * k_shift)
-        total_shift_people += count_in_shift
-        duty_rows.append({
-            "category": cat,
-            "position": pos,
-            "in_shift": str(count_in_shift),
-            "total": total_staff_pos,
-            "note": note,
-        })
+    for item in personnel_items:
+        if not _condition_is_met(item["condition_key"], data):
+            continue
 
-    total_management = sum(r["total"] for r in management_rows)
-    total_duty_staff = sum(r["total"] for r in duty_rows)
+        calculation_type = item["calculation_type"]
+        rule_params = dict(item["rule_params"] or {})
+        rule_params["_calculation_type"] = calculation_type
+
+        if calculation_type == "manual":
+            in_shift = "-"
+            total = 0
+        else:
+            multiplier = _get_multiplier(calc_data, rule_params)
+            per_shift_count = float(item["quantity"]) * multiplier
+            in_shift = per_shift_count if item["apply_shift_factor"] else "-"
+            total = (
+                math.ceil(per_shift_count * shift_factor)
+                if item["apply_shift_factor"]
+                else math.ceil(per_shift_count)
+            )
+
+        if isinstance(in_shift, (int, float)):
+            shift_total += in_shift
+            functional_group_counts[item["functional_group"]] = (
+                functional_group_counts.get(item["functional_group"], 0) + in_shift
+            )
+        role_counts[item["role_code"]] = {
+            "in_shift": in_shift,
+            "total": total,
+            "functional_group": item["functional_group"],
+        }
+
+        row = {
+            "category": item["category"],
+            "position": item["position_name"],
+            "in_shift": str(in_shift) if in_shift != "-" else "-",
+            "total": total,
+            "note": item["note"] or "",
+        }
+
+        if item["functional_group"] == "management":
+            management_rows.append(row)
+            management_total += total
+        else:
+            duty_rows.append(row)
+            duty_total += total
 
     return {
         "management_table": management_rows,
         "duty_table": duty_rows,
-        "shift_total": total_shift_people,
-        "total_duty": total_duty_staff,
-        "management_count": total_management,
-        "total_full_staff": total_duty_staff + total_management,
+        "shift_total": math.ceil(shift_total),
+        "total_duty": duty_total,
+        "management_count": management_total,
+        "total_full_staff": duty_total + management_total,
+        "functional_group_counts": functional_group_counts,
+        "role_counts": role_counts,
     }
 
 
