@@ -141,7 +141,11 @@ def calculate_personnel(data: dict) -> dict:
         row = {
             "category": item["category"],
             "position": item["position_name"],
-            "in_shift": str(in_shift) if in_shift != "-" else "-",
+            "in_shift": (
+                str(int(in_shift))
+                if isinstance(in_shift, (int, float)) and float(in_shift).is_integer()
+                else str(in_shift)
+            ),
             "total": total,
             "note": item["note"] or "",
         }
