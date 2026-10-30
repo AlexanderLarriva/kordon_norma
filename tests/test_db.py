@@ -102,6 +102,55 @@ class DatabaseTests(unittest.TestCase):
         history = db.get_calculation_history()
         self.assertEqual([item["id"] for item in history], [second_id])
 
+
+    def test_personnel_dictionary_is_created_with_expected_defaults(self):
+        personnel = db.get_personnel_dict()
+        self.assertGreater(len(personnel), 0)
+
+        by_code = {item["role_code"]: item for item in personnel}
+        self.assertEqual(by_code["tspk_engineer"]["quantity"], 2)
+        self.assertEqual(by_code["tspk_engineer"]["calculation_type"], "per_checkpoint")
+        self.assertEqual(by_code["tspk_senior_technician"]["quantity"], 2)
+        self.assertEqual(by_code["vehicle_inspection_junior"]["quantity"], 2)
+        self.assertFalse(by_code["canine_inspector"]["is_active"])
+        self.assertFalse(by_code["security_systems_operator"]["is_active"])
+        self.assertEqual(by_code["rpm_operator"]["rule_params"]["directions"], ["in", "out"])
+
+        active = db.get_personnel_dict(include_inactive=False)
+        self.assertTrue(all(item["is_active"] for item in active))
+        self.assertLess(len(active), len(personnel))
+
+    def test_personnel_dictionary_changes_survive_reinitialization(self):
+        personnel = db.get_personnel_dict()
+        engineer = next(item for item in personnel if item["role_code"] == "tspk_engineer")
+        engineer["position_name"] = "Инженер ТСПК (изменено)"
+        db.save_personnel_dict(personnel)
+
+        db.init_db()
+
+        saved = next(
+            item for item in db.get_personnel_dict()
+            if item["role_code"] == "tspk_engineer"
+        )
+        self.assertEqual(saved["position_name"], "Инженер ТСПК (изменено)")
+
+    def test_personnel_dictionary_can_be_reset_to_defaults(self):
+        personnel = db.get_personnel_dict()
+        personnel[0]["position_name"] = "Временное название"
+        db.save_personnel_dict(personnel)
+
+        db.reset_personnel_to_default()
+
+        restored = db.get_personnel_dict()
+        self.assertEqual(restored[0]["position_name"], "Начальник КПП")
+        self.assertGreater(len(restored), 0)
+
+    def test_personnel_dictionary_rejects_duplicate_role_codes(self):
+        personnel = db.get_personnel_dict()
+        personnel.append(dict(personnel[0]))
+        with self.assertRaises(ValueError):
+            db.save_personnel_dict(personnel)
+
     def test_save_dictionary_and_reset_to_defaults(self):
         defaults = db.get_tspk_dict()
         self.assertGreater(len(defaults), 0)
