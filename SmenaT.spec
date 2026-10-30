@@ -6,7 +6,6 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('database.db', '.'),     # Чтобы база данных скопировалась рядом с exe
         ('services', 'services'), # Папка с вашими calc.py и db.py
     ],
     hiddenimports=[
