@@ -106,17 +106,13 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
     settings = get_settings()
     reserve_pct = float(settings.get("reserve_tspk_percent", 0.10))
 
-    tspk_items = []
-    try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT category, equipment_name, selected_model, norm_type, ratio, unit, unit_price_usd, note 
-                FROM dict_tspk
-            """)
-            tspk_items = [dict(row) for row in cursor.fetchall()]
-    except Exception:
-        pass
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT category, equipment_name, selected_model, norm_type, ratio, unit, unit_price_usd, note
+            FROM dict_tspk
+        """)
+        tspk_items = [dict(row) for row in cursor.fetchall()]
 
     cabins_total = data.get("cabins_in", 0) + data.get("cabins_out", 0)
 
@@ -158,6 +154,14 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
     final_items = []
 
     for item in tspk_items:
+        equipment_name = item["equipment_name"]
+
+        # Специальные комплексы учитываются только при выборе в исходных данных.
+        if equipment_name == "Инспекционно-досмотровый комплекс (ИДК)" and not data.get("has_idk"):
+            continue
+        if equipment_name == "Радиационные портальные мониторы (РПМ)" and not data.get("has_rpm"):
+            continue
+
         norm_type = item["norm_type"]
         ratio = item["ratio"]
         required = 0
