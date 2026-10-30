@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from services.calc import calculate_personnel, calculate_tspk
+from services.personnel_ui import render_personnel_editor
 from services.db import (
   delete_calculation,
   get_all_calculations,
@@ -118,6 +119,7 @@ app_mode = st.radio(
         "🧮 Расчет пункта пропуска",
         "📜 История расчетов",
         "⚙️ Справочник ТСПК",
+        "👥 Справочник персонала",
     ],
     horizontal=True,
     label_visibility="collapsed",
@@ -451,6 +453,13 @@ elif app_mode == "⚙️ Справочник ТСПК":
                 st.session_state["tspk_delete_confirm_id"] = item_id_to_delete
                 st.rerun()
 
+    st.stop()
+
+# ==========================================
+# РЕЖИМ: СПРАВОЧНИК ПЕРСОНАЛА
+# ==========================================
+elif app_mode == "👥 Справочник персонала":
+    render_personnel_editor()
     st.stop()
 
 # ==========================================
