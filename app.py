@@ -384,35 +384,72 @@ elif app_mode == "⚙️ Справочник ТСПК":
         st.subheader("Удаление позиции из справочника")
         st.warning("Будьте аккуратны: удаленная позиция пропадет из расчетов.")
         
-        # Выпадающий список для выбора, что удалить
-        tspk_items = {f"{row['id']} | {row['category']} — {row['equipment_name']} ({row['selected_model']})": row['id'] for row in tspk_data}
-        
+        # Выбор позиции для удаления
+        tspk_items = {
+            f"{row['id']} | {row['category']} — {row['equipment_name']} ({row['selected_model']})": row
+            for row in tspk_data
+        }
+
         selected_item_label = st.selectbox(
             "Выберите оборудование для удаления",
             options=list(tspk_items.keys()),
             key=f"delete_select_{st.session_state.get('tspk_delete_version', 0)}",
         )
-        
-        if st.button("🗑️ Удалить выбранную позицию", type="primary"):
-            item_id_to_delete = tspk_items[selected_item_label]
-            try:
-                # Объединяем спиннер и подключение к БД в один with (SIM117)
-                with st.spinner("Удаление позиции из базы..."), get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT equipment_name FROM dict_tspk WHERE id = ?", (item_id_to_delete,))
-                    item_row = cursor.fetchone()
-                    cursor.execute("DELETE FROM dict_tspk WHERE id = ?", (item_id_to_delete,))
-                    conn.commit()
+        selected_item = tspk_items[selected_item_label]
+        item_id_to_delete = selected_item["id"]
 
-                st.session_state["tspk_delete_done"] = (
-                    item_row["equipment_name"] if item_row else selected_item_label
-                )
-                st.session_state["tspk_delete_version"] = (
-                    st.session_state.get("tspk_delete_version", 0) + 1
-                )
+        # Если пользователь переключил позицию, старое подтверждение больше не действует
+        pending_delete_id = st.session_state.get("tspk_delete_confirm_id")
+        if pending_delete_id is not None and pending_delete_id != item_id_to_delete:
+            st.session_state.pop("tspk_delete_confirm_id", None)
+            pending_delete_id = None
+
+        st.markdown("#### Параметры выбранной позиции")
+        detail_col1, detail_col2 = st.columns(2)
+        with detail_col1:
+            st.write(f"**Категория:** {selected_item.get('category') or '—'}")
+            st.write(f"**Наименование:** {selected_item.get('equipment_name') or '—'}")
+            st.write(f"**Модель / Марка:** {selected_item.get('selected_model') or '—'}")
+        with detail_col2:
+            st.write(f"**Единица измерения:** {selected_item.get('unit') or '—'}")
+            st.write(f"**Цена за единицу:** $ {float(selected_item.get('unit_price_usd') or 0):,.2f}")
+            st.write(f"**Примечание:** {selected_item.get('note') or '—'}")
+
+        if pending_delete_id == item_id_to_delete:
+            st.warning(
+                f"Вы действительно хотите удалить позицию «{selected_item['equipment_name']}»? "
+                "После удаления она перестанет учитываться в новых расчётах."
+            )
+            confirm_col, cancel_col = st.columns(2)
+            with confirm_col:
+                if st.button("Да, удалить", type="primary", key="confirm_tspk_delete"):
+                    try:
+                        with st.spinner("Удаление позиции из базы..."), get_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "DELETE FROM dict_tspk WHERE id = ?",
+                                (item_id_to_delete,),
+                            )
+                            if cursor.rowcount == 0:
+                                raise ValueError("Выбранная позиция уже отсутствует в справочнике.")
+                            conn.commit()
+
+                        st.session_state.pop("tspk_delete_confirm_id", None)
+                        st.session_state["tspk_delete_done"] = selected_item["equipment_name"]
+                        st.session_state["tspk_delete_version"] = (
+                            st.session_state.get("tspk_delete_version", 0) + 1
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Ошибка при удалении: {e}")
+            with cancel_col:
+                if st.button("Отмена", key="cancel_tspk_delete"):
+                    st.session_state.pop("tspk_delete_confirm_id", None)
+                    st.rerun()
+        else:
+            if st.button("🗑️ Удалить выбранную позицию", type="primary"):
+                st.session_state["tspk_delete_confirm_id"] = item_id_to_delete
                 st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка при удалении: {e}")
 
     st.stop()
 
