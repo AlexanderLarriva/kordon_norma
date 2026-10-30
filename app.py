@@ -633,7 +633,6 @@ def go_step(step_number: int):
 def start_new_calculation():
   # Сбрасываем параметры и состояние виджетов, не затрагивая сохранённую историю и справочники.
   st.session_state.clear()
-  st.rerun()
 
 
 st.caption(f"Шаг {st.session_state.step} из 3")
