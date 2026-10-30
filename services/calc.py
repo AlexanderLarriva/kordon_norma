@@ -193,12 +193,12 @@ def calculate_tspk(data: dict, personnel_res: dict) -> list[dict]:
     else:
         # Суммируем полосы по всем типам транспорта (легковые, грузовые, автобусы)
         lanes_in = (
-            int(data.get("lanes_car_in", 0)) +
+            int(data.get("lanes_auto_in", 0)) +
             int(data.get("lanes_truck_in", 0)) +
             int(data.get("lanes_bus_in", 0))
         )
         lanes_out = (
-            int(data.get("lanes_car_out", 0)) +
+            int(data.get("lanes_auto_out", 0)) +
             int(data.get("lanes_truck_out", 0)) +
             int(data.get("lanes_bus_out", 0))
         )
