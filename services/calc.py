@@ -14,9 +14,9 @@ def calculate_personnel(data: dict) -> dict:
 
     # Загружаем коэффициенты сменности
     settings = get_settings()
-    if shift_hours == 12:
-        k_shift = float(settings.get("k_shift_12h", 4.0))
-    elif shift_hours == 8:
+    if shift_hours == 2:
+        k_shift = float(settings.get("k_shift_12h", 2.0))
+    elif shift_hours == 3:
         k_shift = float(settings.get("k_shift_8h", 3.0))
     else:
         k_shift = float(settings.get("k_shift_24h", 4.0))

@@ -4,6 +4,9 @@ env/
 venv/
 ENV/
 
+/build/SmenaT/
+/dist/
+
 # Кэш Python и линтеров
 __pycache__/
 *.py[cod]

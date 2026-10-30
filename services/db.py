@@ -320,9 +320,9 @@ def init_db():
         cursor.execute("SELECT COUNT(*) FROM dict_settings")
         if cursor.fetchone()[0] == 0:
             default_settings = [
-                ("k_shift_12h", "4.0", "Коэффициент сменности 12ч"),
-                ("k_shift_8h", "3.0", "Коэффициент сменности 8ч"),
-                ("k_shift_24h", "4.0", "Коэффициент сменности 24ч"),
+                ("k_shift_12h", "2.0", "Коэффициент для двух смен"),
+                ("k_shift_8h", "3.0", "Коэффициент для трех смен"),
+                ("k_shift_24h", "4.0", "Коэффициент для четырех смен"),
                 ("reserve_tspk_percent", "0.10", "Процент НЗ для ТСПК"),
             ]
             cursor.executemany(

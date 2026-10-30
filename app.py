@@ -448,7 +448,7 @@ if "calc_data" not in st.session_state:
       "app_name": "Пункт пропуска 'Мамыр'",
       "capacity_category": "Высокая III (20 000–25 000 лиц/сутки)",
       "work_mode": "24/7 (Круглосуточно)",
-      "shift_hours": 12,
+      "shift_hours": 3,
       "cabins_in": 19,
       "cabins_out": 19,
       "lanes_auto_in": 3,
@@ -507,9 +507,9 @@ if st.session_state.step == 1:
     )
 
     shift_hours = st.radio(
-        "Продолжительность смены",
-        options=[12, 8, 24],
-        format_func=lambda x: f"{x} часов",
+        "Количество смен",
+        options=[2, 3, 4],
+        format_func=lambda x: f"{x}",
         horizontal=True,
     )
 
