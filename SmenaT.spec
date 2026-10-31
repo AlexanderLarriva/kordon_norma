@@ -7,6 +7,7 @@ streamlit_datas, streamlit_binaries, streamlit_hiddenimports = collect_all("stre
 pandas_datas, pandas_binaries, pandas_hiddenimports = collect_all("pandas")
 docx_datas, docx_binaries, docx_hiddenimports = collect_all("docx")
 xlsxwriter_datas, xlsxwriter_binaries, xlsxwriter_hiddenimports = collect_all("xlsxwriter")
+webview_datas, webview_binaries, webview_hiddenimports = collect_all("webview")
 
 datas = [
     ("app.py", "."),
@@ -14,11 +15,13 @@ datas = [
     *pandas_datas,
     *docx_datas,
     *xlsxwriter_datas,
+    *webview_datas,
     *copy_metadata("streamlit"),
     *copy_metadata("pandas"),
     *copy_metadata("python-docx"),
     *copy_metadata("python-dotenv"),
     *copy_metadata("XlsxWriter"),
+    *copy_metadata("pywebview"),
 ]
 
 binaries = [
@@ -26,6 +29,7 @@ binaries = [
     *pandas_binaries,
     *docx_binaries,
     *xlsxwriter_binaries,
+    *webview_binaries,
 ]
 
 hiddenimports = [
@@ -33,6 +37,8 @@ hiddenimports = [
     *pandas_hiddenimports,
     *docx_hiddenimports,
     *xlsxwriter_hiddenimports,
+    *webview_hiddenimports,
+    "clr",
     "services.calc",
     "services.db",
     "services.personnel_ui",
