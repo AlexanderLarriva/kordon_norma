@@ -26,7 +26,6 @@ def run_streamlit_child(app_path, port):
         "--server.headless=true",
         "--server.address=127.0.0.1",
         f"--server.port={port}",
-        "--server.portHead=false",
         "--global.developmentMode=false",
         "--browser.gatherUsageStats=false",
     ]
